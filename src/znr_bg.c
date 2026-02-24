@@ -88,8 +88,8 @@ static int znr_bg_map_zones_to_blockgroups(struct znr_bg *blockgroups,
 			return -EINVAL;
 		}
 
-		blockgroups[i].flags = blockgroups[i].zones[0]->type;
-		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
+		blockgroups[i].blkz_flags = blockgroups[i].zones[0]->type;
+		if (blockgroups[i].blkz_flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
 			blockgroups[i].wp_sector =
 				blockgroups[i].zones[0]->wp -
 				blockgroups[i].sector;
@@ -152,7 +152,7 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 		 * fetch the allocation pointer directly from the FS.
 		 */
 		for (i = 0; i < nr_blockgroups; i++)
-			blockgroups[i].flags = BLK_ZONE_TYPE_CONVENTIONAL;
+			blockgroups[i].blkz_flags = BLK_ZONE_TYPE_CONVENTIONAL;
 		return nr_blockgroups;
 	}
 

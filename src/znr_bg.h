@@ -8,6 +8,15 @@
 #define ZNR_BG_MAX_ZONES	64
 
 /*
+ * @BG_FS_HAS_WP: The filesystem reports a writepointer.
+ * @BG_FS_NOT_WP: The filesystem does not report a writepointer.
+ */
+enum bg_fs_flags {
+	BG_FS_HAS_WP		= 0x1,
+	BG_FS_NO_WP		= 0x2,
+};
+
+/*
  * Block group information.
  */
 struct znr_bg {
@@ -20,7 +29,8 @@ struct znr_bg {
 	/* Write pointer sector offset within this blockgroup */
 	unsigned long wp_sector;
 
-	unsigned int flags;
+	unsigned int blkz_flags;
+	unsigned int fs_flags;
 
 	/* Zones in this block group */
 	struct blk_zone *zones[ZNR_BG_MAX_ZONES];

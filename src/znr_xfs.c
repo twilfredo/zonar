@@ -480,6 +480,7 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 				   unsigned int *nr_blockgroups)
 {
 	struct znr_bg *bgs = NULL;
+	struct xfs_rtgroup_geometry *rt_geom = NULL;
 	unsigned int max_blockgroups = 0;
 	unsigned long rtstart, bbperag, bbperrg, rgcount, agcount;
 	unsigned int ag, rg, idx = 0;
@@ -506,11 +507,27 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 	for (ag = 0; ag < agcount && idx < max_blockgroups; ag++, idx++) {
 		bgs[idx].sector = ag * bbperag;
 		bgs[idx].nr_sectors = bbperag;
+		bgs[idx].fs_flags = BG_FS_NO_WP;
 	}
+
+	rt_geom = calloc(1, sizeof(struct xfs_rtgroup_geometry));
+	if (!rt_geom)
+		return -ENOMEM;
 
 	for (rg = 0; rg < rgcount && idx < max_blockgroups; rg++, idx++) {
 		bgs[idx].sector = rtstart + (rg * bbperrg);
 		bgs[idx].nr_sectors = bbperrg;
+
+		/* Inquire about the writepointer for this group */
+		memset(rt_geom, 0, sizeof(struct xfs_rtgroup_geometry));
+		rt_geom->rg_number = rg;
+		ret = ioctl(znr.mnt_dir.fd, XFS_IOC_RTGROUP_GEOMETRY, rt_geom);
+		if (ret == -1) {
+			bgs[idx].fs_flags = BG_FS_NO_WP;
+		} else {
+			bgs[idx].fs_flags = BG_FS_HAS_WP;
+			bgs[idx].wp_sector = rt_geom->rg_writepointer;
+		}
 	}
 
 	*blockgroups = bgs;
