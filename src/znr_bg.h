@@ -6,6 +6,13 @@
 #define ZNR_BG_H
 
 /*
+ * @BG_FS_HAS_WP: The filesystem reports a writepointer.
+ */
+enum bg_fs_flags {
+	BG_FS_HAS_WP	= 0x1,
+};
+
+/*
  * Block group information.
  */
 struct znr_bg {
@@ -18,7 +25,11 @@ struct znr_bg {
 	/* Write pointer sector offset within this blockgroup */
 	unsigned long wp_sector;
 
+	/* Blockzone flags */
 	unsigned int flags;
+
+	/* Filesystem specific flags */
+	unsigned int fs_flags;
 
 	/* Zones in this block group */
 	struct blk_zone **zones;
