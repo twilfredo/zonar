@@ -148,13 +148,15 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 		return -EINVAL;
 
 	if (!dev->is_zoned) {
-		/*
-		 * If the device is not zoned, treat all zones as
-		 * conventional. When filesystems support it we can add a
-		 * fetch the allocation pointer directly from the FS.
-		 */
-		for (i = 0; i < nr_blockgroups; i++)
-			blockgroups[i].blkz_flags = BLK_ZONE_TYPE_CONVENTIONAL;
+		for (i = 0; i < nr_blockgroups; i++) {
+			if (blockgroups[i].fs_flags == BG_FS_HAS_WP)
+				blockgroups[i].blkz_flags =
+					BLK_ZONE_TYPE_SEQWRITE_REQ;
+			else
+				blockgroups[i].blkz_flags =
+					BLK_ZONE_TYPE_CONVENTIONAL;
+
+		}
 		return nr_blockgroups;
 	}
 
