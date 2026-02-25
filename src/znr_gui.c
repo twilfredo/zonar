@@ -376,7 +376,7 @@ static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 {
 	long long w;
 
-	if (!bg->nr_zones)
+	if (!bg->nr_zones && !bg->fs_has_wp)
 		return;
 
 	if (bg->wp_sector == 0)
@@ -609,7 +609,8 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 			    bg->zones[0]->cond == BLK_ZONE_COND_FULL) {
 				snprintf(wp, sizeof(wp), "N/A");
 				snprintf(usage, sizeof(usage), "100%%");
-			} else if (bg->nr_zones == 1) {
+			} else if (bg->nr_zones == 1 ||
+				   bg->fs_has_wp) {
 				snprintf(wp, sizeof(wp), "0x%lx", bg->wp_sector);
 				snprintf(usage, sizeof(usage), "%lu%%",
 					 bg->wp_sector * 100 / bg->nr_sectors);
@@ -998,26 +999,19 @@ static void znr_gui_draw_legend_cb(GtkDrawingArea *drawing_area,
 			       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 	cairo_set_font_size(cr, 10);
 
-	/* Blockgroup spans conventional zones legend */
+	/* Blockgroup spans conventional zones */
 	znr_gui_draw_legend("Conventional",
 			    &znrg.color_conv, cr, &x, y, widget);
 
-        /*
-         * If the device is not zoned, until we can display an allocation
-         * pointer for emulated zones, keeps sequential unwritten/written
-         * legends hidden.
-         */
-        if (znr.dev.is_zoned) {
-                /* Blockgroup spans sequential zones legend */
-                znr_gui_draw_legend("Sequential (Unwritten)",
-                                    &znrg.color_seq, cr, &x, y, widget);
+	/* Blockgroup spans sequential zones */
+	znr_gui_draw_legend("Sequential (Unwritten)",
+			    &znrg.color_seq, cr, &x, y, widget);
 
-                /* Sequential written zones legend */
-                znr_gui_draw_legend("Sequential (Written)",
-                                    &znrg.color_seqw, cr, &x, y, widget);
-        }
+	/* Blockgroup Sequentially written (write-pointer) */
+	znr_gui_draw_legend("Sequential (Written)",
+			    &znrg.color_seqw, cr, &x, y, widget);
 
-	/* Extent highlight legend */
+	/* File extent highlight legend */
 	znr_gui_draw_legend("File Extent",
 			    &znrg.color_extent, cr, &x, y, widget);
 }
