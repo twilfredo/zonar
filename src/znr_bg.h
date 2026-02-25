@@ -25,6 +25,16 @@ struct znr_bg {
 	unsigned long nr_zones;
 };
 
+enum znr_bg_flags {
+	/* Set if the backing zone has a write pointer */
+	ZNR_BG_HAS_ZONE_WP = (1U << 0),
+	/* Set if the filesystem provided a write pointer */
+	ZNR_BG_HAS_FS_WP   = (1U << 1),
+	ZNR_BG_HAS_WP	   = ZNR_BG_HAS_ZONE_WP | ZNR_BG_HAS_FS_WP,
+	/* Set if the blockgroup is fully written */
+	ZNR_BG_FULL	   = (1U << 2),
+};
+
 int znr_bg_get_blockgroups(struct znr_bg **blockgroups,
 			   unsigned int *nr_blockgroups);
 
