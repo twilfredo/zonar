@@ -38,6 +38,7 @@ static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
 {
 	unsigned long bg_sector_end, zone_sector_end;
 	unsigned int max_zones_per_bg, bg_zone_idx, j, i, zone_start_idx = 0;
+	enum blk_zone_type zone_type;
 	int ret;
 
 	znr_verbose("Mapping %u zones to %u blockgroups\n", nr_zones,
@@ -116,13 +117,13 @@ static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
 			goto out_free;
 		}
 
-		blockgroups[i].flags = blockgroups[i].zones[0]->type;
-		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
-			blockgroups[i].wp_sector =
+		zone_type = blockgroups[i].zones[0]->type;
+		if (zone_type == BLK_ZONE_TYPE_SEQWRITE_REQ) {
+			blockgroups[i].flags |= ZNR_BG_HAS_DEV_ZONE_WP;
+			blockgroups[i].dev_zone_wp_sector =
 				blockgroups[i].zones[0]->wp -
 				blockgroups[i].sector;
-		else
-			blockgroups[i].wp_sector = 0;
+		}
 	}
 
 	return 0;
@@ -169,7 +170,7 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 			 unsigned int blockgroup_no,
 			 unsigned int nr_blockgroups)
 {
-	unsigned int last_zone_no, start_zone_no, nr_zones, i;
+	unsigned int last_zone_no, start_zone_no, nr_zones;
 	unsigned long max_sector;
 	int ret;
 
@@ -177,16 +178,8 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	    blockgroup_no + nr_blockgroups > znr.nr_blockgroups)
 		return -EINVAL;
 
-	if (!dev->is_zoned) {
-		/*
-		 * If the device is not zoned, treat all zones as
-		 * conventional. When filesystems support it we can add a
-		 * fetch the allocation pointer directly from the FS.
-		 */
-		for (i = 0; i < nr_blockgroups; i++)
-			blockgroups[i].flags = BLK_ZONE_TYPE_CONVENTIONAL;
+	if (!dev->is_zoned)
 		return nr_blockgroups;
-	}
 
 	if (!dev || !zones || !max_zones || max_zones > dev->nr_zones)
 		return -EINVAL;

@@ -476,6 +476,46 @@ static int znr_xfs_get_nr_blockgroups(unsigned int *nr_blockgroups)
 	return 0;
 }
 
+#ifdef XFS_HAS_RG_WP
+static int znr_xfs_get_rg_fs_write_pointer(unsigned int rgno, struct znr_bg *bg)
+{
+	struct xfs_rtgroup_geometry *rt_geom;
+	int ret;
+
+	rt_geom = calloc(1, sizeof(struct xfs_rtgroup_geometry));
+	if (!rt_geom) {
+		fprintf(stderr, "Error: no memory for xfs_rtgroup_geometry\n");
+		return -ENOMEM;
+	}
+
+	memset(rt_geom, 0, sizeof(struct xfs_rtgroup_geometry));
+	rt_geom->rg_number = rgno;
+	ret = ioctl(znr.mnt_dir.fd, XFS_IOC_RTGROUP_GEOMETRY, rt_geom);
+	if (ret < 0 || !(rt_geom->rg_flags & XFS_RTGROUP_GEOM_WRITEPOINTER)) {
+		ret = -1;
+		goto out;
+	}
+
+	/* convert rg_writepointer to basic blocks */
+	bg->fs_wp_sector = rt_geom->rg_writepointer * (off_t)fs_geo.blocksize /
+			BBSIZE;
+	bg->flags |= ZNR_BG_HAS_FS_WP;
+
+out:
+	free(rt_geom);
+	if (ret)
+		bg->flags &= ~ZNR_BG_HAS_FS_WP;
+
+	return ret;
+}
+#else
+static int znr_xfs_get_rg_fs_write_pointer(unsigned int rgno, struct znr_bg *bg)
+{
+	bg->flags &= ~ZNR_BG_HAS_FS_WP;
+	return -ENOTSUP;
+}
+#endif
+
 static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 				   unsigned int *nr_blockgroups)
 {
@@ -511,6 +551,18 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 	for (rg = 0; rg < rgcount && idx < max_blockgroups; rg++, idx++) {
 		bgs[idx].sector = rtstart + (rg * bbperrg);
 		bgs[idx].nr_sectors = bbperrg;
+
+		/*
+		 * This will silently fail on older kernels with no support,
+		 * and that is okay since we only set the writepointer on
+		 * success.
+		 */
+		ret = znr_xfs_get_rg_fs_write_pointer(rg, &bgs[idx]);
+		if (ret == -ENOTSUP)
+			continue;
+
+		if (ret < 0)
+			return ret;
 	}
 
 	*blockgroups = bgs;
