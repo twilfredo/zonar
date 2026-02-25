@@ -18,7 +18,15 @@ struct znr_bg {
 	/* Write pointer sector offset within this blockgroup */
 	unsigned long wp_sector;
 
+	/* Blockzone flags */
 	unsigned int flags;
+
+	/*
+	 * If true, the file system provides a write pointer. Otherwise, the
+	 * write pointer must be retrieved from the zones backing the
+	 * blockgroup, if any.
+	 */
+	bool fs_has_wp;
 
 	/* Zones in this block group */
 	struct blk_zone **zones;
