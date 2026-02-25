@@ -89,11 +89,13 @@ static int znr_bg_map_zones_to_blockgroups(struct znr_bg *blockgroups,
 		}
 
 		blockgroups[i].flags = blockgroups[i].zones[0]->type;
-		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
+		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ &&
+		    blockgroups[i].fs_flags != BG_FS_HAS_WP)
 			blockgroups[i].wp_sector =
 				blockgroups[i].zones[0]->wp -
 				blockgroups[i].sector;
-		else
+
+		if (blockgroups[i].flags == BLK_ZONE_TYPE_CONVENTIONAL)
 			blockgroups[i].wp_sector = 0;
 	}
 
