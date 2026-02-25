@@ -30,6 +30,23 @@ void znr_bgs_destroy(struct znr_bg *blockgroups, unsigned int nr_blockgroups)
 	}
 }
 
+static inline void znr_bg_set_zone_wp(struct znr_bg *blockgroup)
+{
+	struct blk_zone *zone;
+
+	if (blockgroup->nr_zones == 0 || !blockgroup->zones) {
+		fprintf(stderr, "error: blockgroup has no backing zones!\n");
+		return;
+	}
+
+	/* Setup the write pointer */
+	zone = blockgroup->zones[0];
+	if (zone->type == BLK_ZONE_TYPE_SEQWRITE_REQ) {
+		blockgroup->flags |= ZNR_BG_HAS_DEV_ZONE_WP;
+		blockgroup->dev_zone_wp = zone->wp - zone->start;
+	}
+}
+
 static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
 				   unsigned int nr_blockgroups,
 				   struct blk_zone *zones,
@@ -115,14 +132,7 @@ static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
 			ret = -EINVAL;
 			goto out_free;
 		}
-
-		blockgroups[i].flags = blockgroups[i].zones[0]->type;
-		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
-			blockgroups[i].wp_sector =
-				blockgroups[i].zones[0]->wp -
-				blockgroups[i].sector;
-		else
-			blockgroups[i].wp_sector = 0;
+		znr_bg_set_zone_wp(&blockgroups[i]);
 	}
 
 	return 0;
@@ -169,7 +179,7 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 			 unsigned int blockgroup_no,
 			 unsigned int nr_blockgroups)
 {
-	unsigned int last_zone_no, start_zone_no, nr_zones, i;
+	unsigned int last_zone_no, start_zone_no, nr_zones;
 	unsigned long max_sector;
 	int ret;
 
@@ -177,16 +187,8 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	    blockgroup_no + nr_blockgroups > znr.nr_blockgroups)
 		return -EINVAL;
 
-	if (!dev->is_zoned) {
-		/*
-		 * If the device is not zoned, treat all zones as
-		 * conventional. When filesystems support it we can add a
-		 * fetch the allocation pointer directly from the FS.
-		 */
-		for (i = 0; i < nr_blockgroups; i++)
-			blockgroups[i].flags = BLK_ZONE_TYPE_CONVENTIONAL;
+	if (!dev->is_zoned)
 		return nr_blockgroups;
-	}
 
 	if (!dev || !zones || !max_zones || max_zones > dev->nr_zones)
 		return -EINVAL;
