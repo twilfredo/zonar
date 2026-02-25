@@ -115,6 +115,14 @@ AC_CHECK_MEMBERS([struct xfs_fsop_geom.rtreserved],
 
 AM_CONDITIONAL([HAS_XFS], [test "x$has_xfs" = "xyes"])
 
+AC_CHECK_MEMBERS([struct xfs_rtgroup_geometry.rg_writepointer],
+		 [AC_DEFINE(XFS_RG_WPTR, [1], [XFS RG writepointer])
+		 xfs_rg_wptr=yes],
+		 [AC_MSG_NOTICE([Missing XFS RG writepointer support])],
+		 [[#include <xfs/xfs.h>]])
+
+AM_CONDITIONAL([XFS_RG_WPTR], [test "x$xfs_rg_wptr" = "xyes"])
+
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
