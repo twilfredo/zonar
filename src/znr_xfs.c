@@ -476,12 +476,44 @@ static int znr_xfs_get_nr_blockgroups(unsigned int *nr_blockgroups)
 	return 0;
 }
 
+#ifdef XFS_RG_WPTR
+static int znr_xfs_rg_get_wptr(unsigned int rgno, unsigned long long *wptr)
+{
+	struct xfs_rtgroup_geometry *rt_geom;
+	int ret;
+
+	rt_geom = calloc(1, sizeof(struct xfs_rtgroup_geometry));
+	if (!rt_geom) {
+		fprintf(stderr, "Error: no memory for xfs_rtgroup_geometry\n:");
+		return -ENOMEM;
+	}
+
+	memset(rt_geom, 0, sizeof(struct xfs_rtgroup_geometry));
+	rt_geom->rg_number = rgno;
+	ret = ioctl(znr.mnt_dir.fd, XFS_IOC_RTGROUP_GEOMETRY, rt_geom);
+	if (ret < 0 || !(rt_geom->rg_flags & XFS_RTGROUP_GEOM_WRITEPOINTER)) {
+		fprintf(stderr, "Failed to get rg writepointer: (%s)\n",
+			strerror(errno));
+		return -1;
+	}
+
+	*wptr = rt_geom->rg_writepointer;
+	return ret;
+}
+#else
+static int znr_xfs_rg_get_wptr(unsigned int rgno, unsigned long long *wptr)
+{
+	return -ENOTSUP;
+}
+#endif
+
 static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 				   unsigned int *nr_blockgroups)
 {
 	struct znr_bg *bgs = NULL;
 	unsigned int max_blockgroups = 0;
 	unsigned long rtstart, bbperag, bbperrg, rgcount, agcount;
+	unsigned long long wptr = 0;
 	unsigned int ag, rg, idx = 0;
 	int ret;
 
@@ -511,6 +543,19 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 	for (rg = 0; rg < rgcount && idx < max_blockgroups; rg++, idx++) {
 		bgs[idx].sector = rtstart + (rg * bbperrg);
 		bgs[idx].nr_sectors = bbperrg;
+
+		/*
+		 * This will silently fail on older kernels with no support,
+		 * and that is okay since we only set the writepointer on
+		 * success.
+		 */
+		ret = znr_xfs_rg_get_wptr(rg, &wptr);
+		if (ret < 0 && ret != -ENOTSUP)
+			return ret;
+		if (!ret) {
+			bgs[idx].fs_flags = BG_FS_HAS_WP;
+			bgs[idx].wp_sector = wptr;
+		}
 	}
 
 	*blockgroups = bgs;
