@@ -169,7 +169,7 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 			 unsigned int blockgroup_no,
 			 unsigned int nr_blockgroups)
 {
-	unsigned int last_zone_no, start_zone_no, nr_zones, i;
+	unsigned int last_zone_no, start_zone_no, nr_zones;
 	unsigned long max_sector;
 	int ret;
 
@@ -178,12 +178,12 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 		return -EINVAL;
 
 	if (!dev->is_zoned) {
-		/*
-		 * For non-zoned devices, if the filesystem has reported
-		 * a writepointer, we can treat them as a sequential write
-		 * blockgroup.
-		 */
-		for (i = 0; i < nr_blockgroups; i++) {
+		ret = znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
+						 nr_blockgroups);
+		if (ret < 0)
+			return ret;
+		nr_blockgroups = ret;
+		for (unsigned int i = 0; i < nr_blockgroups; i++) {
 			if (blockgroups[i].fs_flags == BG_FS_HAS_WP)
 				blockgroups[i].flags =
 					BLK_ZONE_TYPE_SEQWRITE_REQ;
