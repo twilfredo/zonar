@@ -79,6 +79,8 @@ struct znr_fs_ops {
 				    unsigned int *nr_extents);
 	int (*get_blockgroups)(struct znr_bg **blockgroups,
 			       unsigned int *nr_blockgroups);
+	int (*report_blockgroups)(struct znr_bg *blockgroups,
+				  unsigned int nr_blockgroups);
 };
 
 static inline int znr_openat2(int dirfd, const char *pathname,
@@ -109,5 +111,7 @@ int znr_fs_get_extents_in_range(unsigned long long sector,
 				struct znr_extent **ext, unsigned int *nr_ext);
 int znr_fs_get_blockgroups(struct znr_bg **blockgroups,
 			   unsigned int *nr_blockgroups);
+int znr_fs_report_blockgroups(struct znr_bg *blockgroups,
+			      unsigned int nr_blockgroups);
 
 #endif /* ZNR_FS_H */
