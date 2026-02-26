@@ -402,7 +402,7 @@ static int znr_net_send_report_blockgroups(struct znr_net_client *ncli,
 		bg->sector = htonll(bg->sector);
 		bg->nr_sectors = htonll(bg->nr_sectors);
 		bg->wp_sector = htonll(bg->wp_sector);
-		bg->flags = htonl(bg->flags);
+		bg->type = htonl(bg->type);
 	}
 
 	/* Send the blockgroups */
@@ -418,7 +418,7 @@ static int znr_net_send_report_blockgroups(struct znr_net_client *ncli,
 		bg->sector     = ntohll(bg->sector);
 		bg->nr_sectors = ntohll(bg->nr_sectors);
 		bg->wp_sector  = ntohll(bg->wp_sector);
-		bg->flags      = ntohl(bg->flags);
+		bg->type      = ntohl(bg->type);
 	}
 
 	return ret;
@@ -1093,7 +1093,7 @@ int znr_net_get_blockgroup_report(struct znr_net_client *ncli,
 		blockgroups->sector = ntohll(bgs->sector);
 		blockgroups->nr_sectors = ntohll(bgs->nr_sectors);
 		blockgroups->wp_sector = ntohll(bgs->wp_sector);
-		blockgroups->flags = ntohl(bgs->flags);
+		blockgroups->type = ntohl(bgs->type);
 	}
 
 free:

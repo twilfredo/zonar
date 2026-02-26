@@ -217,7 +217,7 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 			 unsigned int blockgroup_no,
 			 unsigned int nr_blockgroups)
 {
-	unsigned int last_zone_no, start_zone_no, nr_zones, i;
+	unsigned int last_zone_no, start_zone_no, nr_zones;
 	unsigned long max_sector;
 	int ret;
 
@@ -226,7 +226,13 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 		return -EINVAL;
 
 	if (!dev->is_zoned) {
-		for (i = 0; i < nr_blockgroups; i++) {
+		ret = znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
+						blockgroup_no,
+						nr_blockgroups);
+		if (ret < 0)
+			return ret;
+		nr_blockgroups = ret;
+		for (unsigned int i = 0; i < nr_blockgroups; i++) {
 			ret = znr_bg_init_bg(&blockgroups[i]);
 			if (ret) {
 				fprintf(stderr, "Failed to init blockgroup: %u\n",
