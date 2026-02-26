@@ -275,6 +275,21 @@ int znr_fs_get_extents_in_range(unsigned long long sector,
 						nr_sectors, ext, nr_ext);
 }
 
+int znr_fs_report_blockgroups(struct znr_bg *blockgroups,
+			      unsigned int blockgroup_no,
+			      unsigned int nr_blockgroups)
+{
+	if (znr.is_net_client)
+		return znr_net_get_blockgroup_report(&znr.ncli,
+						     blockgroups,
+						     blockgroup_no,
+						     nr_blockgroups);
+
+	return znr.mnt_dir.fs->ops->report_blockgroups(blockgroups,
+						       blockgroup_no,
+						       nr_blockgroups);
+}
+
 int znr_fs_get_blockgroups(struct znr_bg **blockgroups,
 			   unsigned int *nr_blockgroups)
 {
