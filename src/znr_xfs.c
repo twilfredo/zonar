@@ -563,9 +563,45 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 	return 0;
 }
 
+int znr_xfs_report_blockgroups(struct znr_bg *blockgroups,
+			       unsigned int nr_blockgroups)
+{
+	unsigned long long wptr = 0;
+	unsigned long rtstart, bbperrg;
+	unsigned int rgno;
+	int ret;
+
+	if (!nr_blockgroups)
+		return 0;
+
+	if (!blockgroups)
+		return -EINVAL;
+
+	bbperrg = bytes_per_rtgroup(&fs_geo) / BBSIZE;
+	rtstart = (off_t)fs_geo.rtstart * (off_t)fs_geo.blocksize / BBSIZE;
+	for (unsigned int i = 0; i < nr_blockgroups; i++) {
+		/* For AGs, do nothing */
+		if (blockgroups[i].sector < rtstart)
+			continue;
+
+		rgno = (blockgroups[i].sector - rtstart) / bbperrg;
+		ret = znr_xfs_rg_get_wptr(rgno, &wptr);
+		if (ret < 0 && ret != -ENOTSUP)
+			return ret;
+		if (!ret) {
+			blockgroups[i].fs_flags = BG_FS_HAS_WP;
+			blockgroups[i].wp_sector = wptr;
+		}
+
+	}
+
+	return nr_blockgroups;
+}
+
 const struct znr_fs_ops znr_xfs_ops = {
 	.init_fs		= znr_xfs_init_fs,
 	.get_file_extents	= znr_xfs_get_file_extents,
 	.get_extents_in_range	= znr_xfs_get_range_extents,
 	.get_blockgroups        = znr_xfs_get_blockgroups,
+	.report_blockgroups	= znr_xfs_report_blockgroups,
 };
