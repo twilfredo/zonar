@@ -991,7 +991,7 @@ static void znr_gui_draw_legend_cb(GtkDrawingArea *drawing_area,
 				   int height  __attribute__((unused)),
 				   gpointer user_data  __attribute__((unused)))
 {
-	gint x = 10, y = 10;
+	gint x = 80, y = 6;
 	GtkWidget *widget = GTK_WIDGET(drawing_area);
 
 	/* Set font */
@@ -1003,23 +1003,13 @@ static void znr_gui_draw_legend_cb(GtkDrawingArea *drawing_area,
 	znr_gui_draw_legend("Conventional",
 			    &znrg.color_conv, cr, &x, y, widget);
 
-        /*
-         * If the device is not zoned, until we can display an allocation
-         * pointer for emulated zones, keeps sequential unwritten/written
-         * legends hidden.
-         */
-        if (znr.dev.is_zoned) {
-                /* Blockgroup spans sequential zones legend */
-                znr_gui_draw_legend("Sequential (Unwritten)",
-                                    &znrg.color_seq, cr, &x, y, widget);
+        /* Blockgroup spans sequential zones legend */
+        znr_gui_draw_legend("Sequential (Unwritten)",
+			    &znrg.color_seq, cr, &x, y, widget);
 
-                x = 10;
-                y *= 3;
-
-                /* Sequential written zones legend */
-                znr_gui_draw_legend("Sequential (Written)",
-                                    &znrg.color_seqw, cr, &x, y, widget);
-        }
+        /* Sequential written zones legend */
+        znr_gui_draw_legend("Sequential (Written)",
+			    &znrg.color_seqw, cr, &x, y, widget);
 
 	/* Extent highlight legend */
 	znr_gui_draw_legend("File Extent",
@@ -1541,8 +1531,8 @@ static void znr_gui_create_app(GtkApplication *app, gpointer user_data)
 	gtk_widget_set_margin_bottom(frame, 5);
 
 	/*
-	 * vbox for 2 hboxes: one for grid and scroll window, another for
-	 * legend, zoom and refresh.
+	 * vbox for 2 hboxes: one for grid, legend and scroll window, another
+	 * for zoom and refresh.
 	 */
 	vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 	gtk_widget_set_margin_start(top_vbox, 10);
@@ -1550,6 +1540,18 @@ static void znr_gui_create_app(GtkApplication *app, gpointer user_data)
 	gtk_widget_set_margin_top(top_vbox, 10);
 	gtk_widget_set_margin_bottom(top_vbox, 10);
 	gtk_frame_set_child(GTK_FRAME(frame), vbox);
+
+	/* Legend space */
+	hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+	gtk_widget_set_halign(hbox, GTK_ALIGN_END);
+
+	/* Legend drawing area */
+	da = gtk_drawing_area_new();
+	gtk_widget_set_size_request(da, 600, 12);
+	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(da),
+			znr_gui_draw_legend_cb, NULL, NULL);
+	gtk_box_append(GTK_BOX(hbox), da);
+	gtk_box_append(GTK_BOX(vbox), hbox);
 
 	/* hbox for grid and scroll window */
 	hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
@@ -1589,22 +1591,15 @@ static void znr_gui_create_app(GtkApplication *app, gpointer user_data)
 	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll_window),
 				      znrg.grid_view);
 
-	/* hbox for legend, zoom and refresh button */
+
+	/* hbox for zoom and refresh button */
 	hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
 	gtk_widget_set_margin_start(hbox, 10);
 	gtk_widget_set_margin_end(hbox, 10);
 	gtk_widget_set_margin_bottom(hbox, 20);
 	gtk_widget_set_vexpand(hbox, FALSE);
 	gtk_box_append(GTK_BOX(vbox), hbox);
-
-	/* Legend drawing area */
-	da = gtk_drawing_area_new();
-	gtk_widget_set_hexpand(da, TRUE);
-	gtk_widget_set_vexpand(da, TRUE);
-	gtk_box_append(GTK_BOX(hbox), da);
-
-	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(da),
-				       znr_gui_draw_legend_cb, NULL, NULL);
+	gtk_widget_set_halign(hbox, GTK_ALIGN_CENTER);
 
 	/* Zoom controls label */
 	zoom_label = gtk_label_new("Zoom:");
