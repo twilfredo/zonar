@@ -497,7 +497,8 @@ static int znr_xfs_rg_get_wptr(unsigned int rgno, unsigned long long *wptr)
 		return -1;
 	}
 
-	*wptr = rt_geom->rg_writepointer;
+	/* convert rg_writepointer to basic blocks */
+	*wptr = rt_geom->rg_writepointer * (off_t)fs_geo.blocksize / BBSIZE;
 	return ret;
 }
 #else
