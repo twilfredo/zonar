@@ -179,7 +179,8 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 
 	if (!dev->is_zoned) {
 		ret = znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
-						 nr_blockgroups);
+						blockgroup_no,
+						nr_blockgroups);
 		if (ret < 0)
 			return ret;
 		nr_blockgroups = ret;

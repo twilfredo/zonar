@@ -369,6 +369,67 @@ reply:
 	return ret;
 }
 
+static int znr_net_send_report_blockgroups(struct znr_net_client *ncli,
+					  struct znr_net_req *req)
+{
+	unsigned int blockgroup_no = req->region_no;
+	unsigned int nr_blockgroups = req->nr_regions;
+	unsigned int data_size, i;
+	struct znr_bg *bg, *bg_start;
+	ssize_t ret;
+	int err = 0;
+
+	znr_verbose("Sending blockgroup report reply (from %u, %u blockgroups)\n",
+		    blockgroup_no, nr_blockgroups);
+
+	ret = znr_fs_report_blockgroups(&znr.blockgroups[blockgroup_no],
+					blockgroup_no, nr_blockgroups);
+	if (ret < 0) {
+		err = ret;
+		goto err_reply;
+	}
+
+	if ((unsigned int)ret != nr_blockgroups) {
+		znr_err("Got %zd nr_blockgroups, expected %u blockgroups\n",
+			ret, nr_blockgroups);
+		err = EINVAL;
+		goto err_reply;
+	}
+
+	bg = &znr.blockgroups[blockgroup_no];
+	bg_start = bg;
+	for (i = 0; i < nr_blockgroups; i++, bg++) {
+		bg->sector = htonll(bg->sector);
+		bg->nr_sectors = htonll(bg->nr_sectors);
+		bg->wp_sector = htonll(bg->wp_sector);
+		bg->flags = htonl(bg->flags);
+		bg->fs_flags = htonl(bg->fs_flags);
+	}
+
+	/* Send the blockgroups */
+	data_size = sizeof(struct znr_bg) * nr_blockgroups;
+	ret = znr_net_send_rep(ncli, ZNR_NET_REPORT_BLOCKGROUPS, err,
+			       bg_start, data_size);
+	if (ret)
+		znr_err("Failed to send %u blockgroups\n", nr_blockgroups);
+
+	/* We need to restore the blockgroups array */
+	bg = bg_start;
+	for (i = 0; i < nr_blockgroups; i++, bg++) {
+		bg->sector     = ntohll(bg->sector);
+		bg->nr_sectors = ntohll(bg->nr_sectors);
+		bg->wp_sector  = ntohll(bg->wp_sector);
+		bg->flags      = ntohl(bg->flags);
+		bg->fs_flags   = ntohl(bg->fs_flags);
+	}
+
+	return ret;
+
+err_reply:
+	ret = znr_net_send_rep(ncli, ZNR_NET_REPORT_BLOCKGROUPS, err, NULL, 0);
+	return ret;
+}
+
 static int znr_net_send_blockgroups(struct znr_net_client *ncli,
 				    struct znr_net_req *req)
 {
@@ -390,6 +451,7 @@ static int znr_net_send_blockgroups(struct znr_net_client *ncli,
 		bg->nr_sectors = htonll(bg->nr_sectors);
 		bg->wp_sector = htonll(bg->wp_sector);
 		bg->flags = htonl(bg->flags);
+		bg->fs_flags = htonl(bg->fs_flags);
 	}
 
 	/* First send the number of blockgroups */
@@ -671,7 +733,7 @@ static void znr_net_server(struct znr_net_client *ncli)
 			ret = znr_net_send_blockgroups(ncli, &req);
 			break;
 		case ZNR_NET_REPORT_BLOCKGROUPS:
-			//ret = znr_net_send_report_blockgroups(ncli, &req);
+			ret = znr_net_send_report_blockgroups(ncli, &req);
 			break;
 		default:
 			ret = -1;
@@ -987,17 +1049,17 @@ int znr_net_get_extents_in_range(struct znr_net_client *ncli,
 }
 
 int znr_net_get_blockgroup_report(struct znr_net_client *ncli,
-				  unsigned int blockgroup_no,
 				  struct znr_bg *blockgroups,
+				  unsigned int blockgroup_no,
 				  unsigned int nr_blockgroups)
 {
 	void *data = NULL;
 	struct znr_bg *bgs;
-	size_t data_size = 0;
 	unsigned int i = 0;
+	size_t data_size = 0;
 	int err, ret = 0;
 
-	znr_verbose("Sending blockgroup report request (from %u, %u blockgroups\n",
+	znr_verbose("Sending blockgroup report request (from %u, %u blockgroups)\n",
 		    blockgroup_no, nr_blockgroups);
 
 	ret = znr_net_send_req(ncli, ZNR_NET_REPORT_BLOCKGROUPS, blockgroup_no,
@@ -1031,9 +1093,9 @@ int znr_net_get_blockgroup_report(struct znr_net_client *ncli,
 		 * except for the zone mapping, as it points to our internal
 		 * copy of struct blk_zone *zone.
 		 */
-		blockgroups->sector = ntohl(bgs->sector);
-		blockgroups->nr_sectors = ntohl(bgs->nr_sectors);
-		blockgroups->wp_sector = ntohl(bgs->wp_sector);
+		blockgroups->sector = ntohll(bgs->sector);
+		blockgroups->nr_sectors = ntohll(bgs->nr_sectors);
+		blockgroups->wp_sector = ntohll(bgs->wp_sector);
 		blockgroups->flags = ntohl(bgs->flags);
 		blockgroups->fs_flags = ntohl(bgs->fs_flags);
 	}
@@ -1109,6 +1171,7 @@ int znr_net_get_blockgroups(struct znr_net_client *ncli,
 		bg->nr_sectors = ntohll(bg->nr_sectors);
 		bg->wp_sector = ntohll(bg->wp_sector);
 		bg->flags = ntohl(bg->flags);
+		bg->fs_flags = ntohl(bg->fs_flags);
 	}
 
 	return (int)*nr_blockgroups;

@@ -80,6 +80,7 @@ struct znr_fs_ops {
 	int (*get_blockgroups)(struct znr_bg **blockgroups,
 			       unsigned int *nr_blockgroups);
 	int (*report_blockgroups)(struct znr_bg *blockgroups,
+				  unsigned int blockgroup_no,
 				  unsigned int nr_blockgroups);
 };
 
@@ -112,6 +113,7 @@ int znr_fs_get_extents_in_range(unsigned long long sector,
 int znr_fs_get_blockgroups(struct znr_bg **blockgroups,
 			   unsigned int *nr_blockgroups);
 int znr_fs_report_blockgroups(struct znr_bg *blockgroups,
+			      unsigned int blockgroup_no,
 			      unsigned int nr_blockgroups);
 
 #endif /* ZNR_FS_H */

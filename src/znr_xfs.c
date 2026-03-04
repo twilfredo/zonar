@@ -564,15 +564,22 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 	return 0;
 }
 
-int znr_xfs_report_blockgroups(struct znr_bg *blockgroups,
-			       unsigned int nr_blockgroups)
+static int znr_xfs_report_blockgroups(struct znr_bg *blockgroups,
+				      unsigned int blockgroup_no,
+				      unsigned int nr_blockgroups)
 {
 	unsigned long long wptr = 0;
 	unsigned long rtstart, bbperrg;
+        unsigned int max_blockgroups = 0;
 	unsigned int rgno;
 	int ret;
 
-	if (!nr_blockgroups)
+	ret = znr_xfs_get_nr_blockgroups(&max_blockgroups);
+	if (ret)
+		return ret;
+
+	if (!nr_blockgroups ||
+	    (blockgroup_no + nr_blockgroups) > max_blockgroups)
 		return 0;
 
 	if (!blockgroups)
