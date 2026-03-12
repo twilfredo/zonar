@@ -116,8 +116,13 @@ static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
 			goto out_free;
 		}
 
-		blockgroups[i].flags = blockgroups[i].zones[0]->type;
-		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
+		/*
+		 * If the filesystem provided a writepointer, use that instead
+		 * as the device write pointer always trails the in-memory
+		 * allocation pointer a bit when I/O is pending
+		 */
+		if (!blockgroups[i].fs_has_wp &&
+		    blockgroups[i].type == BG_SEQ_WRITE)
 			blockgroups[i].wp_sector =
 				blockgroups[i].zones[0]->wp -
 				blockgroups[i].sector;
@@ -169,7 +174,7 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 			 unsigned int blockgroup_no,
 			 unsigned int nr_blockgroups)
 {
-	unsigned int last_zone_no, start_zone_no, nr_zones, i;
+	unsigned int last_zone_no, start_zone_no, nr_zones;
 	unsigned long max_sector;
 	int ret;
 
@@ -177,16 +182,9 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	    blockgroup_no + nr_blockgroups > znr.nr_blockgroups)
 		return -EINVAL;
 
-	if (!dev->is_zoned) {
-		/*
-		 * If the device is not zoned, treat all zones as
-		 * conventional. When filesystems support it we can add a
-		 * fetch the allocation pointer directly from the FS.
-		 */
-		for (i = 0; i < nr_blockgroups; i++)
-			blockgroups[i].flags = BLK_ZONE_TYPE_CONVENTIONAL;
+	/* Filesystem would have provided the necessary information */
+	if (!dev->is_zoned)
 		return nr_blockgroups;
-	}
 
 	if (!dev || !zones || !max_zones || max_zones > dev->nr_zones)
 		return -EINVAL;

@@ -6,6 +6,14 @@
 #define ZNR_BG_H
 
 /*
+ * Block group type
+ */
+enum bg_type {
+	BG_SEQ_WRITE,
+	BG_CONVENTIONAL,
+};
+
+/*
  * Block group information.
  */
 struct znr_bg {
@@ -18,8 +26,8 @@ struct znr_bg {
 	/* Write pointer sector offset within this blockgroup */
 	unsigned long wp_sector;
 
-	/* Blockzone flags */
-	unsigned int flags;
+	/* Blockgroup type */
+	unsigned int type;
 
 	/*
 	 * If true, the file system provides a write pointer. Otherwise, the

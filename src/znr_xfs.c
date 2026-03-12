@@ -539,11 +539,13 @@ static int znr_xfs_get_blockgroups(struct znr_bg **blockgroups,
 	for (ag = 0; ag < agcount && idx < max_blockgroups; ag++, idx++) {
 		bgs[idx].sector = ag * bbperag;
 		bgs[idx].nr_sectors = bbperag;
+		bgs[idx].type = BG_CONVENTIONAL;
 	}
 
 	for (rg = 0; rg < rgcount && idx < max_blockgroups; rg++, idx++) {
 		bgs[idx].sector = rtstart + (rg * bbperrg);
 		bgs[idx].nr_sectors = bbperrg;
+		bgs[idx].type = BG_SEQ_WRITE;
 
 		/*
 		 * This will silently fail on older kernels with no support,

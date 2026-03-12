@@ -566,12 +566,12 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 		return;
 
 	/* Draw blockgroup background based on type in flags field */
-	if (bg->flags == BLK_ZONE_TYPE_CONVENTIONAL) {
+	if (bg->type == BG_CONVENTIONAL) {
 		gdk_cairo_set_source_rgba(cr, &znrg.color_conv);
-	} else if (bg->flags == BLK_ZONE_TYPE_SEQWRITE_REQ) {
+	} else if (bg->type == BG_SEQ_WRITE) {
 		gdk_cairo_set_source_rgba(cr, &znrg.color_seq);
 	} else {
-		fprintf(stderr, "Unknown blockgroup type: %u\n", bg->flags);
+		fprintf(stderr, "Unknown blockgroup type: %u\n", bg->type);
 		gdk_cairo_set_source_rgba(cr, &znrg.color_seq);
 	}
 	cairo_rectangle(cr, 0, 0, width, height);
@@ -604,7 +604,7 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 		cairo_stroke(cr);
 
 		/* Render Blockgroup info in hover overview */
-		if (bg->flags == BLK_ZONE_TYPE_SEQWRITE_REQ) {
+		if (bg->type == BG_SEQ_WRITE) {
 			if (bg->nr_zones == 1 &&
 			    bg->zones[0]->cond == BLK_ZONE_COND_FULL) {
 				snprintf(wp, sizeof(wp), "N/A");
@@ -622,7 +622,7 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 			}
 
 			snprintf(type, sizeof(type), "Sequential Write Required");
-		} else if (bg->flags == BLK_ZONE_TYPE_CONVENTIONAL) {
+		} else if (bg->type == BG_CONVENTIONAL) {
 			snprintf(wp, sizeof(wp), "N/A");
 			snprintf(type, sizeof(type), "Conventional");
 			snprintf(usage, sizeof(usage), "N/A");
