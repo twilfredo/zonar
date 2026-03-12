@@ -30,6 +30,58 @@ void znr_bgs_destroy(struct znr_bg *blockgroups, unsigned int nr_blockgroups)
 	}
 }
 
+/*
+ * For zoned devices, this function must only be called after zones
+ * have been mapped to @bg. If no zones exists in @bg, fallback to the
+ * filesystem to see if a writepointer exists to determine the blockgroup type.
+ */
+static int znr_bg_init_bg(struct znr_bg *bg)
+{
+	struct blk_zone *zone;
+
+	if (!bg)
+		return -EINVAL;
+
+	/* No zones means this is regular block device */
+	if (!bg->nr_zones) {
+		if (bg->fs_has_wp) {
+			bg->type = BG_SEQUENTIAL;
+		} else {
+			bg->type = BG_CONVENTIONAL;
+			bg->wp_sector = 0;
+		}
+		return 0;
+	}
+
+	if (!bg->zones)
+		return -EINVAL;
+
+	zone = bg->zones[0];
+	if (!zone)
+		return -EINVAL;
+
+	switch (zone->type) {
+	case BLK_ZONE_TYPE_CONVENTIONAL:
+		bg->type = BG_CONVENTIONAL;
+		bg->wp_sector = 0;
+		break;
+	case BLK_ZONE_TYPE_SEQWRITE_REQ:
+		bg->type = BG_SEQUENTIAL;
+		if (bg->sector > zone->wp) {
+			fprintf(stderr, "Zone writepointer not in zone\n");
+			return -EINVAL;
+		}
+		bg->wp_sector = zone->wp - bg->sector;
+		break;
+	default:
+		fprintf(stderr, "Unsupported blockgroup type: %u!\n",
+			zone->type);
+		return -ENOTSUP;
+	}
+
+	return 0;
+}
+
 static int znr_bg_map_zones_to_blockgroups(struct znr_bg *blockgroups,
 					   unsigned int nr_blockgroups,
 					   struct blk_zone *zones,
@@ -116,13 +168,9 @@ static int znr_bg_map_zones_to_blockgroups(struct znr_bg *blockgroups,
 			goto out_free;
 		}
 
-		blockgroups[i].flags = blockgroups[i].zones[0]->type;
-		if (blockgroups[i].flags == BLK_ZONE_TYPE_SEQWRITE_REQ)
-			blockgroups[i].wp_sector =
-				blockgroups[i].zones[0]->wp -
-				blockgroups[i].sector;
-		else
-			blockgroups[i].wp_sector = 0;
+		ret = znr_bg_init_bg(&blockgroups[i]);
+		if (ret)
+			goto out_free;
 	}
 
 	return 0;
@@ -178,13 +226,14 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 		return -EINVAL;
 
 	if (!dev->is_zoned) {
-		/*
-		 * If the device is not zoned, treat all zones as
-		 * conventional. When filesystems support it we can add a
-		 * fetch the allocation pointer directly from the FS.
-		 */
-		for (i = 0; i < nr_blockgroups; i++)
-			blockgroups[i].flags = BLK_ZONE_TYPE_CONVENTIONAL;
+		for (i = 0; i < nr_blockgroups; i++) {
+			ret = znr_bg_init_bg(&blockgroups[i]);
+			if (ret) {
+				fprintf(stderr, "Failed to init blockgroup: %u\n",
+					i);
+				return ret;
+			}
+		}
 		return nr_blockgroups;
 	}
 
