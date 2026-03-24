@@ -41,6 +41,33 @@ struct znr_bg {
 	unsigned long nr_zones;
 };
 
+static inline bool znr_bg_has_wp(const struct znr_bg *bg)
+{
+	bool has_wp = false;
+
+	if (!bg)
+		return false;
+
+	has_wp = (bg->type == BG_SEQ_WRITE) &&
+	       ((bg->nr_zones == 1) || bg->fs_has_wp);
+
+	return has_wp;
+}
+
+static inline bool znr_bg_full(const struct znr_bg *bg)
+{
+	if (!bg)
+		return false;
+
+	if (!znr_bg_has_wp(bg))
+		return false;
+
+	if (bg->wp_sector >= bg->nr_sectors)
+		return true;
+
+	return false;
+}
+
 int znr_bg_get_blockgroups(struct znr_bg **blockgroups,
 			   unsigned int *nr_blockgroups);
 
