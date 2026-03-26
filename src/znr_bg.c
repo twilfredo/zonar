@@ -30,18 +30,101 @@ void znr_bgs_destroy(struct znr_bg *blockgroups, unsigned int nr_blockgroups)
 	}
 }
 
-static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
-				   unsigned int nr_blockgroups,
+static int znr_bg_get_zone_mapping(struct znr_bg *blockgroup,
 				   struct blk_zone *zones,
+				   unsigned int *zone_idx,
 				   unsigned int nr_zones,
 				   unsigned int zone_sectors)
 {
 	unsigned long bg_sector_end, zone_sector_end;
-	unsigned int max_zones_per_bg, bg_zone_idx, j, i, zone_start_idx = 0;
-	int ret;
+	unsigned int j, max_zones_per_bg, bg_zone_idx = 0;
+	int ret = 0;
 
-	znr_verbose("Mapping %u zones to %u blockgroups\n", nr_zones,
-		    nr_blockgroups);
+	if (!blockgroup || !zones || !nr_zones || !zone_idx)
+		return -EINVAL;
+
+	if (*zone_idx >= nr_zones)
+		return -EINVAL;
+
+	/*
+	 * Max zones mapped to a blockgroup plus some padding for
+	 * overlap between blockgroups (e.g XFS allocation groups).
+	 */
+	max_zones_per_bg = (blockgroup->nr_sectors / zone_sectors) + 4;
+	blockgroup->zones =
+		calloc(max_zones_per_bg, sizeof(struct blk_zone *));
+	if (!blockgroup->zones) {
+		fprintf(stderr, "No memory for blockgroup zone array\n");
+		return -ENOMEM;
+	}
+
+	bg_sector_end = blockgroup->sector + blockgroup->nr_sectors;
+	bg_zone_idx = 0;
+
+	/*
+	 * Start from the previous zone if possible to see if there was
+	 * any overlap.
+	 */
+	j = *zone_idx > 0 ? *zone_idx - 1 : 0;
+	for (; j < nr_zones; ++j) {
+		zone_sector_end = zones[j].start + zones[j].len;
+
+		/* Skip zones that end before this blockgroup starts */
+		if (zone_sector_end <= blockgroup->sector)
+			continue;
+
+		/*
+		 * Stop checking zones that start at or after this blockgroup
+		 * ends
+		 */
+		if (zones[j].start >= bg_sector_end)
+			break;
+
+		/* This zone spans the blockgroup */
+		blockgroup->zones[bg_zone_idx] = &zones[j];
+		bg_zone_idx++;
+		if (bg_zone_idx > max_zones_per_bg) {
+			fprintf(stderr,
+				"Too many zones in blockgroup: [%u/%u]\n",
+				bg_zone_idx, max_zones_per_bg);
+			free(blockgroup->zones);
+			blockgroup->zones = NULL;
+			return -EINVAL;
+		}
+	}
+
+	if (!bg_zone_idx) {
+		fprintf(stderr, "No zones in blockgroup\n");
+		free(blockgroup->zones);
+		blockgroup->zones = NULL;
+		return -EINVAL;
+	}
+
+	/*
+	 * If the filesystem provided a writepointer, use that instead
+	 * as the device write pointer always trails the in-memory
+	 * allocation pointer a bit when I/O is pending
+	 */
+	if (!blockgroup->fs_has_wp && blockgroup->type == BG_SEQ_WRITE)
+		blockgroup->wp_sector = blockgroup->zones[0]->wp -
+					   blockgroup->sector;
+	else
+		blockgroup->wp_sector = 0;
+
+	blockgroup->nr_zones = bg_zone_idx;
+	*zone_idx = j;
+	return ret;
+}
+
+static int znr_bg_get_zone_info(struct znr_bg *blockgroups,
+				unsigned int nr_blockgroups,
+				struct blk_zone *zones,
+				unsigned int nr_zones,
+				unsigned int zone_sectors)
+{
+	unsigned int i, zone_idx = 0;
+	int ret = 0;
+
 
 	if (!blockgroups || !zones)
 		return -EINVAL;
@@ -55,83 +138,23 @@ static int znr_get_bg_zone_mapping(struct znr_bg *blockgroups,
 	if (nr_zones > znr.nr_zones)
 		return -EINVAL;
 
-	for (i = 0; i < nr_blockgroups; ++i) {
-		/*
-		 * Max zones mapped to a blockgroup plus some padding for
-		 * overlap between blockgroups (e.g XFS allocation groups).
-		 */
-		max_zones_per_bg =
-			(blockgroups[i].nr_sectors / zone_sectors) + 4;
-		blockgroups[i].nr_zones = max_zones_per_bg;
-		blockgroups[i].zones =
-			calloc(max_zones_per_bg, sizeof(struct blk_zone *));
-		if (!blockgroups[i].zones) {
-			fprintf(stderr, "No memory for blockgroup zone array\n");
-			ret = -ENOMEM;
-			goto out_free;
-		}
+	znr_verbose("Getting zone info for %u blockgroup starting at sector: 0x%lx\n",
+		    nr_blockgroups, blockgroups[0].sector);
 
-		bg_sector_end = blockgroups[i].sector +
-				blockgroups[i].nr_sectors;
-		bg_zone_idx = 0;
-
-		/*
-		 * Start from where we left off, but check the last zone back.
-		 * For conventional zones, blockgroups may overlap zones.
-		 */
-		j = (zone_start_idx > 1) ? zone_start_idx - 1 : 0;
-		for (; j < nr_zones; ++j) {
-			zone_sector_end = zones[j].start + zones[j].len;
-
-			/* Skip zones that end before this blockgroup starts */
-			if (zone_sector_end <= blockgroups[i].sector) {
-				zone_start_idx = j + 1;
-				continue;
-			}
-
-			/*
-			 * Stop checking zones that start at or after this
-			 * blockgroup ends
-			 */
-			if (zones[j].start >= bg_sector_end)
-				break;
-
-			/* This zone overlaps with the i'th blockgroup */
-			blockgroups[i].zones[bg_zone_idx] = &zones[j];
-			bg_zone_idx++;
-			if (bg_zone_idx > max_zones_per_bg) {
-				fprintf(stderr,
-					"Too many zones in blockgroup[%u]:  [%u/%u]\n",
-					i, bg_zone_idx, max_zones_per_bg);
-				ret = -EINVAL;
-				goto out_free;
-			}
-			blockgroups[i].nr_zones = bg_zone_idx;
-		}
-
-		if (!blockgroups[i].nr_zones) {
-			fprintf(stderr,
-				"No zones mapped to blockgroup %u\n", i);
+	for (i = 0; i < nr_blockgroups; i++) {
+		if (zone_idx >= nr_zones) {
 			ret = -EINVAL;
 			goto out_free;
 		}
 
-		/*
-		 * If the filesystem provided a writepointer, use that instead
-		 * as the device write pointer always trails the in-memory
-		 * allocation pointer a bit when I/O is pending
-		 */
-		if (!blockgroups[i].fs_has_wp &&
-		    blockgroups[i].type == BG_SEQ_WRITE)
-			blockgroups[i].wp_sector =
-				blockgroups[i].zones[0]->wp -
-				blockgroups[i].sector;
-		else
-			blockgroups[i].wp_sector = 0;
+		ret = znr_bg_get_zone_mapping(&blockgroups[i], zones,
+					      &zone_idx, nr_zones,
+					      zone_sectors);
+		if (ret)
+			goto out_free;
 	}
 
 	return 0;
-
 out_free:
 	znr_bgs_destroy(blockgroups, i);
 	return ret;
@@ -226,9 +249,9 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	if ((unsigned int)ret != nr_zones)
 		return -EINVAL;
 
-	ret = znr_get_bg_zone_mapping(blockgroups, nr_blockgroups,
-				      &zones[start_zone_no], nr_zones,
-				      dev->zone_sectors);
+	ret = znr_bg_get_zone_info(blockgroups, nr_blockgroups,
+				   &zones[start_zone_no], nr_zones,
+				   dev->zone_sectors);
 	if (ret)
 		return ret;
 
