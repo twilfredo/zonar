@@ -244,7 +244,8 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 		return -EINVAL;
 	}
 
-	ret = znr_bg_to_zno(dev, blockgroups, &blockgroups[nr_blockgroups - 1],
+	ret = znr_bg_to_zno(dev, blockgroups,
+			    &blockgroups[blockgroup_no + (nr_blockgroups - 1)],
 			    &start_zone_no, &last_zone_no);
 	if (ret)
 		return ret;
@@ -259,7 +260,8 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	if ((unsigned int)ret != nr_zones)
 		return -EINVAL;
 
-	ret = znr_bg_get_zone_info(blockgroups, nr_blockgroups,
+	ret = znr_bg_get_zone_info(&blockgroups[blockgroup_no],
+				   nr_blockgroups,
 				   &zones[start_zone_no], nr_zones,
 				   dev->zone_sectors);
 	if (ret)
