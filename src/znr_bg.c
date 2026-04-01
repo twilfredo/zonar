@@ -186,8 +186,15 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	    blockgroup_no + nr_blockgroups > znr.nr_blockgroups)
 		return -EINVAL;
 
-	if (!dev->is_zoned)
+	if (!dev->is_zoned) {
+		ret = znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
+						blockgroup_no,
+						nr_blockgroups);
+		if (ret < 0)
+			return ret;
+		nr_blockgroups = ret;
 		return nr_blockgroups;
+	}
 
 	if (!dev || !zones || !max_zones || max_zones > dev->nr_zones)
 		return -EINVAL;
