@@ -100,6 +100,7 @@ struct znr_gui {
 	GdkRGBA			color_conv;
 	GdkRGBA			color_seq;
 	GdkRGBA			color_seqw;
+	GdkRGBA			color_delta;
 	GdkRGBA			color_text;
 	GdkRGBA			color_jz;
 	GdkRGBA			color_extent;
@@ -374,7 +375,8 @@ static void znr_gui_update(void)
 static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 					    int width, int height)
 {
-	long long w;
+	unsigned long zone_wp, wp_delta;
+	long long w, dw;
 
 	if (bg->wp_sector == 0 || !(bg->flags & ZNR_BG_HAS_WP))
 		return;
@@ -387,6 +389,42 @@ static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 
 	gdk_cairo_set_source_rgba(cr, &znrg.color_seqw);
 	cairo_rectangle(cr, 0, 0, w, height);
+	cairo_fill(cr);
+
+	if (w >= width || bg->nr_zones == 0 || !bg->zones)
+		return;
+
+	/* Zone WP is not valid if the zone is full */
+	if (bg->flags & ZNR_BG_FULL)
+		return;
+
+	/*
+	 * Note that blockgroup write pointer may have been provided by the
+	 * filesystem, which means, during heavy I/Os, the zone writepointer
+	 * can trail behind the in memory FS write pointer. If such a delta
+	 * exists, draw it.
+	 */
+	zone_wp = bg->zones[0]->wp - bg->sector;
+	if (zone_wp > bg->wp_sector) {
+		fprintf(stderr, "unexpected zone write-pointer sector\n");
+		return;
+	}
+
+	wp_delta = bg->wp_sector - zone_wp;
+	if (!wp_delta)
+		return;
+
+	dw = (long long)width * wp_delta / bg->nr_sectors;
+	/* Unlikely, but clip it just in case */
+	if (w + dw > width)
+		dw = width - w;
+
+	/* Tiny deltas (likely case) will be rounded to zero, ignore them */
+	if (!dw)
+		return;
+
+	gdk_cairo_set_source_rgba(cr, &znrg.color_delta);
+	cairo_rectangle(cr, w, 0, dw, height);
 	cairo_fill(cr);
 }
 
@@ -981,28 +1019,25 @@ static void znr_gui_draw_legend_cb(GtkDrawingArea *drawing_area,
 			       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 	cairo_set_font_size(cr, 10);
 
-	/* Blockgroup spans conventional zones legend */
+	/* Blockgroup backed by conventional zones */
 	znr_gui_draw_legend("Conventional",
 			    &znrg.color_conv, cr, &x, y, widget);
 
-        /*
-         * If the device is not zoned, until we can display an allocation
-         * pointer for emulated zones, keeps sequential unwritten/written
-         * legends hidden.
-         */
-        if (znr.dev.is_zoned) {
-                /* Blockgroup spans sequential zones legend */
-                znr_gui_draw_legend("Sequential (Unwritten)",
-                                    &znrg.color_seq, cr, &x, y, widget);
+	/* Blockgroup backed by sequential write zones */
+	znr_gui_draw_legend("Sequential (Unwritten)",
+			    &znrg.color_seq, cr, &x, y, widget);
 
-                /* Sequential written zones legend */
-                znr_gui_draw_legend("Sequential (Written)",
-                                    &znrg.color_seqw, cr, &x, y, widget);
-        }
+	/* Blockgroup sequentially written (write-pointer) */
+	znr_gui_draw_legend("Sequential (Written)",
+			    &znrg.color_seqw, cr, &x, y, widget);
 
-	/* Extent highlight legend */
+	/* File extent highlight */
 	znr_gui_draw_legend("File Extent",
 			    &znrg.color_extent, cr, &x, y, widget);
+
+	/* Difference of the filesystem and the zone write pointer */
+	znr_gui_draw_legend("Filesystem vs Device WP",
+			    &znrg.color_delta, cr, &x, y, widget);
 }
 
 static void znr_gui_blockgroup_da_size(int *width, int *height)
@@ -1482,6 +1517,7 @@ static void znr_gui_create_app(GtkApplication *app, gpointer user_data)
 	gdk_rgba_parse(&znrg.color_conv, "Magenta");
 	gdk_rgba_parse(&znrg.color_seq, "#25bb00ff");
 	gdk_rgba_parse(&znrg.color_seqw, "Red");
+	gdk_rgba_parse(&znrg.color_delta, "Orange");
 	gdk_rgba_parse(&znrg.color_text, "Black");
 	gdk_rgba_parse(&znrg.color_jz, "Indigo");
 	gdk_rgba_parse(&znrg.color_extent, "Gold");
@@ -1536,7 +1572,7 @@ static void znr_gui_create_app(GtkApplication *app, gpointer user_data)
 
 	/* Legend drawing area */
 	da = gtk_drawing_area_new();
-	gtk_widget_set_size_request(da, 600, 14);
+	gtk_widget_set_size_request(da, 800, 14);
 	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(da),
 			znr_gui_draw_legend_cb, NULL, NULL);
 	gtk_box_append(GTK_BOX(hbox), da);
