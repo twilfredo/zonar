@@ -376,10 +376,7 @@ static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 {
 	long long w;
 
-	if (!bg->nr_zones)
-		return;
-
-	if (bg->wp_sector == 0)
+	if (bg->wp_sector == 0 || !(bg->flags & ZNR_BG_HAS_WP))
 		return;
 
 	/* Written space in blockgroup */
@@ -565,15 +562,12 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 	if (!bg)
 		return;
 
-	/* Draw blockgroup background based on type in flags field */
-	if (bg->flags == BLK_ZONE_TYPE_CONVENTIONAL) {
+	/* Blockgroups are sequential if a writepointer exists */
+	if (bg->flags & ZNR_BG_HAS_WP)
+		gdk_cairo_set_source_rgba(cr, &znrg.color_seq);
+	else
 		gdk_cairo_set_source_rgba(cr, &znrg.color_conv);
-	} else if (bg->flags == BLK_ZONE_TYPE_SEQWRITE_REQ) {
-		gdk_cairo_set_source_rgba(cr, &znrg.color_seq);
-	} else {
-		fprintf(stderr, "Unknown blockgroup type: %u\n", bg->flags);
-		gdk_cairo_set_source_rgba(cr, &znrg.color_seq);
-	}
+
 	cairo_rectangle(cr, 0, 0, width, height);
 	cairo_fill(cr);
 
@@ -604,32 +598,21 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 		cairo_stroke(cr);
 
 		/* Render Blockgroup info in hover overview */
-		if (bg->flags == BLK_ZONE_TYPE_SEQWRITE_REQ) {
-			if (bg->nr_zones == 1 &&
-			    bg->zones[0]->cond == BLK_ZONE_COND_FULL) {
+		if (bg->flags & ZNR_BG_HAS_WP) {
+			if (bg->flags & ZNR_BG_FULL) {
 				snprintf(wp, sizeof(wp), "N/A");
 				snprintf(usage, sizeof(usage), "100%%");
-			} else if (bg->nr_zones == 1) {
+			} else {
 				snprintf(wp, sizeof(wp), "0x%lx", bg->wp_sector);
 				snprintf(usage, sizeof(usage), "%lu%%",
 					 bg->wp_sector * 100 / bg->nr_sectors);
-			} else {
-				/* todo: Likely RAID, we need to revise */
-				snprintf(wp, sizeof(wp), "Unknown");
-				snprintf(usage, sizeof(usage), "N/A");
-				fprintf(stderr,
-					"Unsupported number of zones in blockgroups");
 			}
 
 			snprintf(type, sizeof(type), "Sequential Write Required");
-		} else if (bg->flags == BLK_ZONE_TYPE_CONVENTIONAL) {
+		} else {
 			snprintf(wp, sizeof(wp), "N/A");
 			snprintf(type, sizeof(type), "Conventional");
 			snprintf(usage, sizeof(usage), "N/A");
-		} else {
-			snprintf(wp, sizeof(wp), "Unknown");
-			snprintf(type, sizeof(type), "Unknown");
-			snprintf(usage, sizeof(usage), "Unknown");
 		}
 
 		snprintf(info, sizeof(info),
