@@ -42,6 +42,8 @@ enum znr_bg_flags {
 	ZNR_BG_HAS_FS_WP	= (1U << 1),
 	/* Set if the blockgroup is fully written */
 	ZNR_BG_FULL		= (1U << 2),
+	/* Blockgroup has backing zone information (Zoned block devices) */
+	ZNR_BG_HAS_ZONE_INFO	= (1U << 3),
 };
 
 static inline bool znr_bg_has_wp(struct znr_bg *bg)
