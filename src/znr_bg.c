@@ -220,15 +220,11 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	    blockgroup_no + nr_blockgroups > znr.nr_blockgroups)
 		return -EINVAL;
 
-	if (!dev->is_zoned) {
-		ret = znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
+	/* We can only rely on the filesystem for regular devices */
+	if (!dev->is_zoned)
+		return znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
 						blockgroup_no,
 						nr_blockgroups);
-		if (ret < 0)
-			return ret;
-		nr_blockgroups = ret;
-		return nr_blockgroups;
-	}
 
 	if (!dev || !zones || !max_zones || max_zones > dev->nr_zones)
 		return -EINVAL;
@@ -259,6 +255,16 @@ static int znr_bg_report(struct znr_device *dev, struct blk_zone *zones,
 	ret = znr_dev_report_zones(dev, start_zone_no,
 				   &zones[start_zone_no], nr_zones);
 	if ((unsigned int)ret != nr_zones)
+		return -EINVAL;
+
+	/*
+	 * This needs to happen after a zone report to ensure we get the most
+	 * upto date FS writepointer
+	 */
+	ret = znr_fs_report_blockgroups(&blockgroups[blockgroup_no],
+					blockgroup_no,
+					nr_blockgroups);
+	if (ret < 0 || (unsigned int)ret != nr_blockgroups)
 		return -EINVAL;
 
 	ret = znr_bg_get_zone_info(&blockgroups[blockgroup_no],
