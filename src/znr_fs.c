@@ -279,6 +279,10 @@ int znr_fs_report_blockgroups(struct znr_bg *blockgroups,
 			      unsigned int bg_no,
 			      unsigned int nr_bgs)
 {
+	if (znr.is_net_client)
+		return znr_net_get_blockgroup_report(&znr.ncli, blockgroups,
+						     bg_no, nr_bgs);
+
 	return znr.mnt_dir.fs->ops->report_blockgroups(blockgroups, bg_no,
 						       nr_bgs);
 }
