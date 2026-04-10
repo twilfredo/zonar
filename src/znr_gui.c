@@ -379,6 +379,14 @@ static inline long long znr_gui_get_wp_width(long long max_width,
 	return w > max_width ? max_width : w;
 }
 
+static inline void znr_gui_draw_rect(cairo_t *cr, GdkRGBA *color, double x,
+				     double y, double width, double height)
+{
+	gdk_cairo_set_source_rgba(cr, color);
+	cairo_rectangle(cr, x, y, width, height);
+	cairo_fill(cr);
+}
+
 static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 					    int width, int height)
 {
@@ -402,17 +410,13 @@ static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 
 	/* if the blockgroup is full, draw across the full width */
 	if (bg_full) {
-		gdk_cairo_set_source_rgba(cr, &znrg.color_seqw);
-		cairo_rectangle(cr, 0, 0, width, height);
-		cairo_fill(cr);
+		znr_gui_draw_rect(cr, &znrg.color_seqw, 0, 0, width, height);
 		return;
 	}
 
 	/* Written space in blockgroup */
 	w = znr_gui_get_wp_width(width, wp, bg->nr_sectors);
-	gdk_cairo_set_source_rgba(cr, &znrg.color_seqw);
-	cairo_rectangle(cr, 0, 0, w, height);
-	cairo_fill(cr);
+	znr_gui_draw_rect(cr, &znrg.color_seqw, 0, 0, w, height);
 }
 
 static void znr_gui_blockgroup_draw_num(struct znr_gui_blockgroup *blockgroup,
