@@ -95,6 +95,12 @@ static int znr_net_send_req(struct znr_net_client *ncli,
 		req.rep.zone.zone_start = htonl(args->zno);
 		req.rep.zone.nr_zones = htonl(args->nr_zones);
 		break;
+	case ZNR_NET_REPORT_BLOCKGROUPS:
+		if (!args)
+			return -1;
+		req.rep.bg.bg_start = htonl(args->bg);
+		req.rep.bg.nr_bgs = htonl(args->nr_bgs);
+		break;
 	case ZNR_NET_EXTENTS_IN_RANGE:
 		if (!args)
 			return -1;
@@ -140,6 +146,10 @@ static int znr_net_recv_req(struct znr_net_client *ncli,
 	case ZNR_NET_DEV_REP_ZONES:
 		req->rep.zone.zone_start = ntohl(req->rep.zone.zone_start);
 		req->rep.zone.nr_zones = ntohl(req->rep.zone.nr_zones);
+		return 0;
+	case ZNR_NET_REPORT_BLOCKGROUPS:
+		req->rep.bg.bg_start = ntohl(req->rep.bg.bg_start);
+		req->rep.bg.nr_bgs = ntohl(req->rep.bg.nr_bgs);
 		return 0;
 	case ZNR_NET_EXTENTS_IN_RANGE:
 		req->sector = ntohll(req->sector);
@@ -381,6 +391,71 @@ reply:
 
 	znr_fs_free_file(f);
 	free(extents);
+	return ret;
+}
+
+static int znr_net_send_report_blockgroups(struct znr_net_client *ncli,
+					   struct znr_net_req *req)
+{
+	unsigned int bg_no = req->rep.bg.bg_start;
+	unsigned int nr_bgs = req->rep.bg.nr_bgs;
+	unsigned int data_size, i;
+	unsigned int flags;
+	struct znr_bg *bg, *bg_start;
+	ssize_t ret;
+	int err = 0;
+
+	znr_verbose("Sending blockgroup report reply (from %u, %u blockgroups)\n",
+		    bg_no, nr_bgs);
+
+	ret = znr_fs_report_blockgroups(&znr.blockgroups[bg_no],
+					bg_no, nr_bgs);
+	if (ret < 0) {
+		err = ret;
+		goto err_reply;
+	}
+
+	if ((unsigned int)ret != nr_bgs) {
+		znr_err("Got %zd nr_blockgroups, expected %u blockgroups\n",
+			ret, nr_bgs);
+		err = EINVAL;
+		goto err_reply;
+	}
+
+	bg = &znr.blockgroups[bg_no];
+	bg_start = bg;
+	for (i = 0; i < nr_bgs; i++, bg++) {
+		flags = bg->flags;
+		bg->sector = htonll(bg->sector);
+		bg->nr_sectors = htonll(bg->nr_sectors);
+		bg->dev_zone_wp = htonll(bg->dev_zone_wp);
+		bg->fs_wp = htonll(bg->fs_wp);
+		/* ZNR_BG_MAPPING_INITIALIZED is only valid locally. */
+		bg->flags = htonl(flags & ~ZNR_BG_MAPPING_INITIALIZED);
+	}
+
+	/* Send the blockgroups. */
+	data_size = sizeof(struct znr_bg) * nr_bgs;
+	ret = znr_net_send_rep(ncli, ZNR_NET_REPORT_BLOCKGROUPS, err,
+			       bg_start, data_size);
+	if (ret)
+		znr_err("Failed to send %u blockgroups\n", nr_bgs);
+
+	/* We need to restore the blockgroups array. */
+	bg = bg_start;
+	for (i = 0; i < nr_bgs; i++, bg++) {
+		flags = znr.blockgroups[bg_no + i].flags;
+		bg->sector = ntohll(bg->sector);
+		bg->nr_sectors = ntohll(bg->nr_sectors);
+		bg->dev_zone_wp = ntohll(bg->dev_zone_wp);
+		bg->fs_wp = ntohll(bg->fs_wp);
+		bg->flags = flags;
+	}
+
+	return ret;
+
+err_reply:
+	ret = znr_net_send_rep(ncli, ZNR_NET_REPORT_BLOCKGROUPS, err, NULL, 0);
 	return ret;
 }
 
@@ -685,6 +760,9 @@ static void znr_net_server(struct znr_net_client *ncli)
 			break;
 		case ZNR_NET_BLOCKGROUPS:
 			ret = znr_net_send_blockgroups(ncli, &req);
+			break;
+		case ZNR_NET_REPORT_BLOCKGROUPS:
+			ret = znr_net_send_report_blockgroups(ncli, &req);
 			break;
 		default:
 			ret = -1;
@@ -1004,6 +1082,63 @@ int znr_net_get_extents_in_range(struct znr_net_client *ncli,
 	}
 
 	return ret;
+}
+
+int znr_net_get_blockgroup_report(struct znr_net_client *ncli,
+				  struct znr_bg *blockgroups,
+				  unsigned int bg_no,
+				  unsigned int nr_bgs)
+{
+	void *data = NULL;
+	struct znr_bg *bgs;
+	struct znr_net_req_args args = {0};
+	unsigned int i = 0;
+	size_t data_size = 0;
+	int err, ret = 0;
+
+	znr_verbose("Sending blockgroup report request (from %u, %u blockgroups)\n",
+		    bg_no, nr_bgs);
+
+	args.bg = bg_no;
+	args.nr_bgs = nr_bgs;
+	ret = znr_net_send_req(ncli, ZNR_NET_REPORT_BLOCKGROUPS, &args);
+	if (ret)
+		return ret;
+
+	ret = znr_net_recv_rep(ncli, ZNR_NET_REPORT_BLOCKGROUPS, &err, &data,
+			       &data_size);
+	if (ret)
+		return ret;
+
+	if (err) {
+		znr_err("Get report blockgroups failed\n");
+		return -1;
+	}
+
+	if (data_size != sizeof(struct znr_bg) * nr_bgs) {
+		znr_err("Invalid number of blockgroups in report\n");
+		ret = -1;
+		goto free;
+	}
+
+	znr_verbose("Blockgroup report: %u blockgroups from blockgroup %u\n",
+		    nr_bgs, bg_no);
+	bgs = data;
+	/*
+	 * For a blockgroup report, only write pointer(s) and flags can change.
+	 */
+	for (i = 0; i < nr_bgs; i++, bgs++, blockgroups++) {
+		blockgroups->dev_zone_wp = ntohll(bgs->dev_zone_wp);
+		blockgroups->fs_wp = ntohll(bgs->fs_wp);
+		blockgroups->flags = ntohl(bgs->flags);
+	}
+
+free:
+	free(data);
+
+	if (ret)
+		return ret;
+	return nr_bgs;
 }
 
 int znr_net_get_blockgroups(struct znr_net_client *ncli,
