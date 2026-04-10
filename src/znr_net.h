@@ -55,6 +55,7 @@ enum znr_net_req_id {
 	ZNR_NET_FILE_EXTENTS,
 	ZNR_NET_EXTENTS_IN_RANGE,
 	ZNR_NET_BLOCKGROUPS,
+	ZNR_NET_REPORT_BLOCKGROUPS,
 };
 
 struct znr_net_mntdir_info {
@@ -78,11 +79,23 @@ struct znr_net_dev_info {
 	__u8		is_zoned;
 } __attribute__ ((packed));
 
+struct zone_report {
+	unsigned int zone_start;
+	unsigned int nr_zones;
+} __attribute__ ((packed));
+
+struct bg_report {
+	unsigned int bg_start;
+	unsigned int nr_bgs;
+} __attribute__ ((packed));
+
 struct znr_net_req {
 	__u32		magic;
 	__u32		id;
-	__u32		zno;
-	__u32		nr_zones;
+	union {
+		struct zone_report zone;
+		struct bg_report bg;
+	} rep;
 	__u64		sector;
 	__u64		nr_sectors;
 	__u8		path[PATH_MAX];
@@ -117,5 +130,9 @@ int znr_net_get_extents_in_range(struct znr_net_client *ncli,
 int znr_net_get_blockgroups(struct znr_net_client *ncli,
 			    struct znr_bg **blockgroups,
 			    unsigned int *nr_blockgroups);
+int znr_net_get_blockgroup_report(struct znr_net_client *ncli,
+				  struct znr_bg *blockgroups,
+				  unsigned int blockgroup_no,
+				  unsigned int nr_blockgroups);
 
 #endif /* ZNR_NET_H */
