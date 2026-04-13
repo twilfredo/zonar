@@ -76,21 +76,38 @@ static int znr_net_recv(struct znr_net_client *ncli,
 
 static int znr_net_send_req(struct znr_net_client *ncli,
 			    enum znr_net_req_id id,
-			    __u32 zno, __u32 nr_zones,
-			    __u64 sector, __u64 nr_sectors,
-			    char *path)
+			    struct znr_net_req_args *args)
 {
 	struct znr_net_req req = {
 		.magic = htonl(ZNR_NET_MAGIC),
 		.id = htonl(id),
-		.zno = htonl(zno),
-		.nr_zones = htonl(nr_zones),
-		.sector = htonll(sector),
-		.nr_sectors = htonll(nr_sectors),
 	};
 
-	if (path)
-		strncpy((char *)req.path, path, sizeof(req.path) - 1);
+	switch (id) {
+	case ZNR_NET_MNTDIR_INFO:
+	case ZNR_NET_DEV_INFO:
+	case ZNR_NET_FILE_EXTENTS:
+	case ZNR_NET_BLOCKGROUPS:
+		break;
+	case ZNR_NET_DEV_REP_ZONES:
+		if (!args)
+			return -1;
+		req.rep.zone.zone_start = htonl(args->zno);
+		req.rep.zone.nr_zones = htonl(args->nr_zones);
+		break;
+	case ZNR_NET_EXTENTS_IN_RANGE:
+		if (!args)
+			return -1;
+		req.sector = ntohll(args->sector);
+		req.nr_sectors = ntohll(args->nr_sectors);
+		break;
+	default:
+		znr_err("Invalid request ID\n");
+		return -1;
+	}
+
+	if (args && args->path)
+		strncpy((char *)req.path, args->path, sizeof(req.path) - 1);
 
 	return znr_net_send(ncli, (void *) &req, sizeof(req));
 }
@@ -121,11 +138,10 @@ static int znr_net_recv_req(struct znr_net_client *ncli,
 	case ZNR_NET_BLOCKGROUPS:
 		return 0;
 	case ZNR_NET_DEV_REP_ZONES:
-		req->zno = ntohl(req->zno);
-		req->nr_zones = ntohl(req->nr_zones);
+		req->rep.zone.zone_start = ntohl(req->rep.zone.zone_start);
+		req->rep.zone.nr_zones = ntohl(req->rep.zone.nr_zones);
 		return 0;
 	case ZNR_NET_EXTENTS_IN_RANGE:
-		req->zno = ntohl(req->zno);
 		req->sector = ntohll(req->sector);
 		req->nr_sectors = ntohll(req->nr_sectors);
 		return 0;
@@ -260,8 +276,8 @@ static int znr_net_send_dev_info_rep(struct znr_net_client *ncli)
 static int znr_net_send_dev_rep_zones_rep(struct znr_net_client *ncli,
 					  struct znr_net_req *req)
 {
-	unsigned int zno = req->zno;
-	unsigned int nr_zones = req->nr_zones;
+	unsigned int zno = req->rep.zone.zone_start;
+	unsigned int nr_zones = req->rep.zone.nr_zones;
 	struct blk_zone *blkz;
 	__u32 data_size = 0;
 	unsigned int i;
@@ -713,7 +729,7 @@ int znr_net_get_mntdir_info(struct znr_net_client *ncli)
 
 	znr_verbose("Sending mntdir info request\n");
 
-	ret = znr_net_send_req(ncli, ZNR_NET_MNTDIR_INFO, 0, 0, 0, 0, NULL);
+	ret = znr_net_send_req(ncli, ZNR_NET_MNTDIR_INFO, NULL);
 	if (ret)
 		return ret;
 
@@ -762,7 +778,7 @@ int znr_net_get_dev_info(struct znr_net_client *ncli)
 
 	znr_verbose("Sending device info request\n");
 
-	ret = znr_net_send_req(ncli, ZNR_NET_DEV_INFO, 0, 0, 0, 0, NULL);
+	ret = znr_net_send_req(ncli, ZNR_NET_DEV_INFO, NULL);
 	if (ret)
 		return ret;
 
@@ -815,6 +831,7 @@ int znr_net_get_dev_rep_zones(struct znr_net_client *ncli,
 {
 	void *data = NULL;
 	struct blk_zone *blkz;
+	struct znr_net_req_args args = {0};
 	size_t data_size = 0;
 	unsigned int i;
 	int err, ret = 0;
@@ -822,8 +839,9 @@ int znr_net_get_dev_rep_zones(struct znr_net_client *ncli,
 	znr_verbose("Sending zone report request (from %u, %u zones)\n",
 		    zno, nr_zones);
 
-	ret = znr_net_send_req(ncli, ZNR_NET_DEV_REP_ZONES,
-			       zno, nr_zones, 0, 0, NULL);
+	args.zno = zno;
+	args.nr_zones = nr_zones;
+	ret = znr_net_send_req(ncli, ZNR_NET_DEV_REP_ZONES, &args);
 	if (ret)
 		return ret;
 
@@ -871,6 +889,7 @@ int znr_net_get_file_extents(struct znr_net_client *ncli, char *path,
 			     unsigned int *nr_extents)
 {
 	struct znr_extent *ext = NULL;
+	struct znr_net_req_args args = {0};
 	unsigned int i, nr_ext = 0;
 	size_t data_size;
 	int err, ret;
@@ -884,7 +903,9 @@ int znr_net_get_file_extents(struct znr_net_client *ncli, char *path,
 		znr_err("Invalid file path\n");
 		return -1;
 	}
-	ret = znr_net_send_req(ncli, ZNR_NET_FILE_EXTENTS, 0, 0, 0, 0, path);
+
+	args.path = path;
+	ret = znr_net_send_req(ncli, ZNR_NET_FILE_EXTENTS, &args);
 	if (ret)
 		return ret;
 
@@ -927,6 +948,7 @@ int znr_net_get_extents_in_range(struct znr_net_client *ncli,
 				 unsigned int *nr_extents)
 {
 	struct znr_extent *ext = NULL;
+	struct znr_net_req_args args = {0};
 	unsigned int i, nr_ext = 0;
 	size_t data_size;
 	int err, ret;
@@ -944,8 +966,9 @@ int znr_net_get_extents_in_range(struct znr_net_client *ncli,
 		return -EINVAL;
 	}
 
-	ret = znr_net_send_req(ncli, ZNR_NET_EXTENTS_IN_RANGE, 0, 0,
-			       sector, nr_sectors, NULL);
+	args.sector = sector;
+	args.nr_sectors = nr_sectors;
+	ret = znr_net_send_req(ncli, ZNR_NET_EXTENTS_IN_RANGE, &args);
 	if (ret)
 		return ret;
 
@@ -998,7 +1021,7 @@ int znr_net_get_blockgroups(struct znr_net_client *ncli,
 	if (!nr_bgs || !bgs)
 		return -EINVAL;
 
-	ret = znr_net_send_req(ncli, ZNR_NET_BLOCKGROUPS, 0, 0, 0, 0, NULL);
+	ret = znr_net_send_req(ncli, ZNR_NET_BLOCKGROUPS, NULL);
 	if (ret)
 		return ret;
 
