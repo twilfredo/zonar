@@ -78,13 +78,29 @@ struct znr_net_dev_info {
 	__u8		is_zoned;
 } __attribute__ ((packed));
 
+struct znr_net_dev_zone_report {
+	__u32 zone_start;
+	__u32 nr_zones;
+} __attribute__ ((packed));
+
+struct znr_net_fs_blockgroup_report {
+	__u32 bg_start;
+	__u32 nr_bgs;
+} __attribute__ ((packed));
+
+struct znr_net_fs_extent_report {
+	__u64 sector;
+	__u64 nr_sectors;
+} __attribute__ ((packed));
+
 struct znr_net_req {
 	__u32		magic;
 	__u32		id;
-	__u32		zno;
-	__u32		nr_zones;
-	__u64		sector;
-	__u64		nr_sectors;
+	union {
+		struct znr_net_dev_zone_report zone;
+		struct znr_net_fs_blockgroup_report bg;
+		struct znr_net_fs_extent_report ext;
+	} args;
 	__u8		path[PATH_MAX];
 } __attribute__ ((packed));
 
