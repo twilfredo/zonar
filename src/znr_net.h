@@ -95,6 +95,14 @@ struct znr_net_rep {
 	__u32		data_size;
 } __attribute__ ((packed));
 
+struct znr_net_req_args {
+    __u32 zno;
+    __u32 nr_zones;
+    __u64 sector;
+    __u64 nr_sectors;
+    char *path;
+};
+
 int znr_net_connect(struct znr_net_client *ncli);
 int znr_net_listen(struct znr_net_client *ncli);
 void znr_net_disconnect(struct znr_net_client *ncli);
