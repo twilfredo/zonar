@@ -78,11 +78,23 @@ struct znr_net_dev_info {
 	__u8		is_zoned;
 } __attribute__ ((packed));
 
+struct znr_net_dev_zone_report {
+       unsigned int zone_start;
+       unsigned int nr_zones;
+} __attribute__ ((packed));
+
+struct znr_net_fs_blockgroup_report {
+       unsigned int bg_start;
+       unsigned int nr_bgs;
+} __attribute__ ((packed));
+
 struct znr_net_req {
 	__u32		magic;
 	__u32		id;
-	__u32		zno;
-	__u32		nr_zones;
+       union {
+               struct znr_net_dev_zone_report zone;
+               struct znr_net_fs_blockgroup_report bg;
+       } rep;
 	__u64		sector;
 	__u64		nr_sectors;
 	__u8		path[PATH_MAX];
@@ -94,6 +106,16 @@ struct znr_net_rep {
 	__u32		err;
 	__u32		data_size;
 } __attribute__ ((packed));
+
+struct znr_net_req_args {
+    __u32 zno;
+    __u32 nr_zones;
+    __u32 bg;
+    __u32 nr_bgs;
+    __u64 sector;
+    __u64 nr_sectors;
+    char *path;
+};
 
 int znr_net_connect(struct znr_net_client *ncli);
 int znr_net_listen(struct znr_net_client *ncli);
