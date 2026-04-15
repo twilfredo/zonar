@@ -980,11 +980,11 @@ static void znr_gui_blockgroup_click_cb(GtkGestureClick *self, gint n_press,
 		if (bg_full)
 			snprintf(wp_str, sizeof(wp_str), "N/A (Blockgroup full)");
 		else
-			snprintf(wp_str, sizeof(wp_str), "%lu", wp);
+			snprintf(wp_str, sizeof(wp_str), "0x%lx", wp);
 	}
 
 	snprintf(info, sizeof(info),
-		 "<b>Blockgroup %u</b>\nSector: %lu\nSize: %lu sectors\nWP: %s\n\n",
+		 "<b>Blockgroup %u</b>\nSector: 0x%lx\nSize: 0x%lx sectors\nWP: %s\n\n",
 		 blockgroup->bg_no, bg->sector, bg->nr_sectors, wp_str);
 
 	bg_info = info;
