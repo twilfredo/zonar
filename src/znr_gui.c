@@ -24,7 +24,7 @@
  */
 struct znr_gui_blockgroup {
 	unsigned int		bg_no;
-	struct znr_bg		*bg;
+	struct znr_blockgroup	*bg;
 	GtkWidget		*da;
 	bool			hovered;
 
@@ -149,7 +149,7 @@ G_DECLARE_FINAL_TYPE(znr_blockgroup_item, znr_blockgroup_item,
 struct _znr_blockgroup_item {
 	GObject parent;
 	unsigned int bg_no;
-	struct znr_bg *bg;
+	struct znr_blockgroup *bg;
 };
 
 G_DEFINE_TYPE(znr_blockgroup_item, znr_blockgroup_item, G_TYPE_OBJECT)
@@ -169,7 +169,7 @@ static void znr_blockgroup_item_init(znr_blockgroup_item *item)
 static void znr_blockgroup_item_class_init(znr_blockgroup_itemClass *class) {}
 
 static znr_blockgroup_item *znr_blockgroup_item_new(unsigned int bg_no,
-						    struct znr_bg *bg)
+						    struct znr_blockgroup *bg)
 {
 	znr_blockgroup_item *item =
 		g_object_new(ZNR_TYPE_BLOCKGROUP_ITEM, NULL);
@@ -291,28 +291,28 @@ out_err:
 }
 
 static int znr_gui_report_blockgroups(unsigned int bg_start,
-				      unsigned int nr_blockgroups)
+				      unsigned int nr_bgs)
 {
 	int ret;
 
-	if (bg_start >= znr.nr_blockgroups)
+	if (bg_start >= znr.nr_bgs)
 		return 0;
 
-	if (bg_start + nr_blockgroups > znr.nr_blockgroups)
-		nr_blockgroups = znr.nr_blockgroups - bg_start;
+	if (bg_start + nr_bgs > znr.nr_bgs)
+		nr_bgs = znr.nr_bgs - bg_start;
 
 	/* Get blockgroup information */
 	ret = znr_bg_refresh(&znr.dev, znr.blk_zones, znr.nr_zones,
-			     znr.blockgroups, bg_start, nr_blockgroups);
+			     znr.bgs, bg_start, nr_bgs);
 	if (ret < 0) {
 		fprintf(stderr, "Get blockgroup information failed %d (%s)\n",
 			errno, strerror(errno));
 		return ret;
 	}
 
-	if ((unsigned int)ret != nr_blockgroups) {
+	if ((unsigned int)ret != nr_bgs) {
 		fprintf(stderr, "Got %d blockgroups, expected %u blockgroups\n",
-			ret, nr_blockgroups);
+			ret, nr_bgs);
 		return -EIO;
 	}
 
@@ -320,8 +320,8 @@ static int znr_gui_report_blockgroups(unsigned int bg_start,
 }
 
 struct znr_gui_blockgroup_report_info {
-        unsigned int starting_blockgroup;
-        unsigned int nr_blockgroups;
+	unsigned int starting_bg;
+	unsigned int nr_bgs;
 };
 
 /*
@@ -333,10 +333,10 @@ struct znr_gui_blockgroup_report_info {
  */
 static gboolean znr_gui_deferred_report_blockgroups(gpointer data)
 {
-        struct znr_gui_blockgroup_report_info *bg_rep = data;
-        unsigned int start = bg_rep->starting_blockgroup;
-        unsigned int nr_bgs = bg_rep->nr_blockgroups;
-        int ret;
+	struct znr_gui_blockgroup_report_info *bg_rep = data;
+	unsigned int start = bg_rep->starting_bg;
+	unsigned int nr_bgs = bg_rep->nr_bgs;
+	int ret;
 
         ret = znr_gui_report_blockgroups(start, nr_bgs);
 	if (ret) {
@@ -371,8 +371,8 @@ static void znr_gui_update(void)
 		gtk_widget_queue_draw(GTK_WIDGET(value));
 }
 
-static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
-					    int width, int height)
+static void znr_gui_blockgroup_draw_written(struct znr_blockgroup *bg,
+					    cairo_t *cr, int width, int height)
 {
 	long long w;
 
@@ -393,7 +393,7 @@ static void znr_gui_blockgroup_draw_written(struct znr_bg *bg, cairo_t *cr,
 	cairo_fill(cr);
 }
 
-static void znr_gui_blockgroup_draw_num(struct znr_gui_blockgroup *blockgroup,
+static void znr_gui_blockgroup_draw_num(struct znr_gui_blockgroup *bg,
 					cairo_t *cr, int width, int height)
 {
 	cairo_text_extents_t te;
@@ -405,7 +405,7 @@ static void znr_gui_blockgroup_draw_num(struct znr_gui_blockgroup *blockgroup,
 			       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 	cairo_set_font_size(cr, 10);
 
-	snprintf(str, sizeof(str), "%u", blockgroup->bg_no);
+	snprintf(str, sizeof(str), "%u", bg->bg_no);
 	cairo_text_extents(cr, str, &te);
 	cairo_move_to(cr,
 		      width / 2 - te.width / 2 - te.x_bearing,
@@ -413,7 +413,7 @@ static void znr_gui_blockgroup_draw_num(struct znr_gui_blockgroup *blockgroup,
 	cairo_show_text(cr, str);
 }
 
-static bool znr_gui_blockgroup_tab_open(struct znr_gui_blockgroup *blockgroup,
+static bool znr_gui_blockgroup_tab_open(struct znr_gui_blockgroup *bg,
 					struct znr_gui_extents_tab **ext_tab)
 
 {
@@ -435,7 +435,7 @@ static bool znr_gui_blockgroup_tab_open(struct znr_gui_blockgroup *blockgroup,
 		if (!tab || !tab->blockgroup)
 			continue;
 
-		if (blockgroup == tab->blockgroup) {
+		if (bg == tab->blockgroup) {
 			*ext_tab = tab;
 			return true;
 		}
@@ -446,7 +446,7 @@ static bool znr_gui_blockgroup_tab_open(struct znr_gui_blockgroup *blockgroup,
 }
 
 static bool
-znr_gui_should_draw_blockgroup_extents(struct znr_gui_blockgroup *blockgroup,
+znr_gui_should_draw_blockgroup_extents(struct znr_gui_blockgroup *bg,
 				       struct znr_gui_extents_tab **ext_tab)
 {
 	struct znr_gui_extents_tab *tab = znr_gui_get_current_extents_tab();
@@ -454,7 +454,7 @@ znr_gui_should_draw_blockgroup_extents(struct znr_gui_blockgroup *blockgroup,
 	if (!tab)
 		return false;
 
-	if (!blockgroup || !blockgroup->bg)
+	if (!bg || !bg->bg)
 		return false;
 
 	if (!znrg.extents_tab_view)
@@ -464,7 +464,7 @@ znr_gui_should_draw_blockgroup_extents(struct znr_gui_blockgroup *blockgroup,
 	 * If a blockgroup tab is in focus, allow drawing extents for all
 	 * blockgroup tabs
 	 */
-	if (znr_gui_blockgroup_tab_open(blockgroup, ext_tab))
+	if (znr_gui_blockgroup_tab_open(bg, ext_tab))
 		return true;
 
 	/* If a file tab is in focus, draw extents for that file */
@@ -477,26 +477,26 @@ znr_gui_should_draw_blockgroup_extents(struct znr_gui_blockgroup *blockgroup,
 }
 
 static inline bool znr_gui_extent_in_blockgroup(struct znr_extent *ext,
-						struct znr_bg *bg)
+						struct znr_blockgroup *bg)
 {
 	return ext->sector >= bg->sector &&
 		ext->sector + ext->nr_sectors <= bg->sector + bg->nr_sectors;
 }
 
 static void
-znr_gui_blockgroup_draw_extents(struct znr_gui_blockgroup *blockgroup,
+znr_gui_blockgroup_draw_extents(struct znr_gui_blockgroup *gui_bg,
 				cairo_t *cr, int width, int height)
 {
 	unsigned long long bg_sect, bg_len;
 	struct znr_gui_extents_tab *tab = NULL;
-	struct znr_bg *bg = blockgroup->bg;
+	struct znr_blockgroup *bg = gui_bg->bg;
 	double x, y, w, h, ext_x, ext_w;
 	cairo_text_extents_t te;
 	struct znr_extent *ext;
 	unsigned int i;
 	char str[16];
 
-	if (!znr_gui_should_draw_blockgroup_extents(blockgroup, &tab))
+	if (!znr_gui_should_draw_blockgroup_extents(gui_bg, &tab))
 		return;
 
 	bg_sect = bg->sector;
@@ -554,8 +554,8 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 				       cairo_t *cr, int width, int height,
 				       gpointer user_data)
 {
-	struct znr_gui_blockgroup *blockgroup = user_data;
-	struct znr_bg *bg = blockgroup->bg;
+	struct znr_gui_blockgroup *gui_bg = user_data;
+	struct znr_blockgroup *bg = gui_bg->bg;
 	char info[256];
 	char wp[32];
 	char type[32];
@@ -580,14 +580,14 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 	znr_gui_blockgroup_draw_written(bg, cr, width, height);
 
 	/* Draw file extents */
-	znr_gui_blockgroup_draw_extents(blockgroup, cr, width, height);
+	znr_gui_blockgroup_draw_extents(gui_bg, cr, width, height);
 
 	/* Draw blockgroup number */
-	znr_gui_blockgroup_draw_num(blockgroup, cr, width, height);
+	znr_gui_blockgroup_draw_num(gui_bg, cr, width, height);
 
 	/* Draw selection highlight if blockgroup is selected */
-	if (blockgroup && znrg.show_blockgroup != UINT_MAX &&
-	    blockgroup->bg_no == znrg.show_blockgroup) {
+	if (gui_bg && znrg.show_blockgroup != UINT_MAX &&
+	    gui_bg->bg_no == znrg.show_blockgroup) {
 		gdk_cairo_set_source_rgba(cr, &znrg.color_jz);
 		cairo_set_line_width(cr, 4);
 		cairo_rectangle(cr, 2, 2, width - 4, height - 4);
@@ -596,8 +596,8 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 	}
 
 	/* Draw hover highlight if blockgroup is hovered */
-	if (blockgroup && blockgroup->hovered) {
-		gtk_widget_get_color(blockgroup->da, &fg_color);
+	if (gui_bg && gui_bg->hovered) {
+		gtk_widget_get_color(gui_bg->da, &fg_color);
 		gdk_cairo_set_source_rgba(cr, &fg_color);
 		cairo_set_line_width(cr, 3);
 		cairo_rectangle(cr, 1, 1, width - 2, height - 2);
@@ -634,7 +634,7 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 
 		snprintf(info, sizeof(info),
 			 "Blockgroup [%u]: %s • Start: 0x%lx Size: 0x%lx sectors • WP: %s • Usage: %s",
-			 blockgroup->bg_no, type, bg->sector, bg->nr_sectors,
+			 gui_bg->bg_no, type, bg->sector, bg->nr_sectors,
 			 wp, usage);
 		gtk_editable_set_text(GTK_EDITABLE(znrg.bg_status), info);
 	}
@@ -643,13 +643,13 @@ static void znr_gui_blockgroup_draw_cb(GtkDrawingArea *drawing_area,
 static gboolean znr_gui_blockgroup_enter_cb(GtkWidget *widget,
 					    gpointer user_data)
 {
-	struct znr_gui_blockgroup *blockgroup = user_data;
+	struct znr_gui_blockgroup *gui_bg = user_data;
 
-	if (!blockgroup || !widget || !blockgroup->da)
+	if (!gui_bg || !widget || !gui_bg->da)
 		return FALSE;
 
-	blockgroup->hovered = true;
-	gtk_widget_queue_draw(blockgroup->da);
+	gui_bg->hovered = true;
+	gtk_widget_queue_draw(gui_bg->da);
 
 	return FALSE;
 }
@@ -657,13 +657,13 @@ static gboolean znr_gui_blockgroup_enter_cb(GtkWidget *widget,
 static gboolean znr_gui_blockgroup_leave_cb(GtkWidget *widget,
 					    gpointer user_data)
 {
-	struct znr_gui_blockgroup *blockgroup = user_data;
+	struct znr_gui_blockgroup *gui_bg = user_data;
 
-	if (!blockgroup || !widget || !blockgroup->da)
+	if (!gui_bg || !widget || !gui_bg->da)
 		return FALSE;
 
-	blockgroup->hovered = false;
-	gtk_widget_queue_draw(blockgroup->da);
+	gui_bg->hovered = false;
+	gtk_widget_queue_draw(gui_bg->da);
 
 	return FALSE;
 }
@@ -870,7 +870,7 @@ static void znr_gui_blockgroup_click_cb(GtkGestureClick *self, gint n_press,
 					gdouble x, gdouble y,
 					gpointer user_data)
 {
-	struct znr_gui_blockgroup *blockgroup =
+	struct znr_gui_blockgroup *gui_bg =
 		(struct znr_gui_blockgroup *)user_data;
 	struct znr_gui_extents_tab *tab;
 	GtkTextBuffer *text_buffer;
@@ -882,28 +882,28 @@ static void znr_gui_blockgroup_click_cb(GtkGestureClick *self, gint n_press,
 	char tab_label[32], *bg_info;
 	int ret;
 
-	if (!blockgroup || !blockgroup->bg)
+	if (!gui_bg || !gui_bg->bg)
 		return;
 
 	/* If the blockgroup already has a tab, focus it. */
-	if (blockgroup->tab) {
+	if (gui_bg->tab) {
 		adw_tab_view_set_selected_page(znrg.extents_tab_view,
-					       blockgroup->tab->page);
+					       gui_bg->tab->page);
 		return;
 	}
 
 	/* Update the blockgroup */
-	ret = znr_gui_report_blockgroups(blockgroup->bg_no, 1);
+	ret = znr_gui_report_blockgroups(gui_bg->bg_no, 1);
 	if (ret) {
 		znr_gui_err("Report Blockgroup Failed",
 			    "Report blockgroups for blockgroup %u failed (%s)",
-			    blockgroup->bg_no, strerror(errno));
+			    gui_bg->bg_no, strerror(errno));
 		return;
 	}
 
 	/* Get all extents in the clicked blockgroup */
-	ret = znr_fs_get_extents_in_range(blockgroup->bg->sector,
-					  blockgroup->bg->nr_sectors,
+	ret = znr_fs_get_extents_in_range(gui_bg->bg->sector,
+					  gui_bg->bg->nr_sectors,
 					  &extents, &nr_extents);
 	if (ret) {
 		znr_gui_err("Failed to get blockgroup extents\n", NULL);
@@ -922,16 +922,16 @@ static void znr_gui_blockgroup_click_cb(GtkGestureClick *self, gint n_press,
 	text_buffer = gtk_text_buffer_new(NULL);
 	gtk_text_buffer_get_start_iter(text_buffer, &iter);
 
-	if (blockgroup->bg->wp_sector >= blockgroup->bg->nr_sectors)
+	if (gui_bg->bg->wp_sector >= gui_bg->bg->nr_sectors)
 		snprintf(info, sizeof(info),
 			 "<b>Blockgroup %u</b>\nSector: %lu\nSize: %lu sectors\nWP: N/A (Blockgroup full) \n\n",
-			 blockgroup->bg_no, blockgroup->bg->sector,
-			 blockgroup->bg->nr_sectors);
+			 gui_bg->bg_no, gui_bg->bg->sector,
+			 gui_bg->bg->nr_sectors);
 	else
 		snprintf(info, sizeof(info),
 			 "<b>Blockgroup %u</b>\nSector: %lu\nSize: %lu sectors\nWP: %lu\n\n",
-			 blockgroup->bg_no, blockgroup->bg->sector,
-			 blockgroup->bg->nr_sectors, blockgroup->bg->wp_sector);
+			 gui_bg->bg_no, gui_bg->bg->sector,
+			 gui_bg->bg->nr_sectors, gui_bg->bg->wp_sector);
 	bg_info = info;
 	gtk_text_buffer_insert_markup(text_buffer, &iter, bg_info,
 				      strlen(bg_info));
@@ -941,13 +941,13 @@ static void znr_gui_blockgroup_click_cb(GtkGestureClick *self, gint n_press,
 
 	/* Open the tab */
 	snprintf(tab_label, sizeof(tab_label), "Blockgroup %u",
-		 blockgroup->bg_no);
+		 gui_bg->bg_no);
 	tab = znr_gui_add_extents_dialog_tab(tab_label, text_buffer);
 	if (!tab)
 		return;
 
-	blockgroup->tab = tab;
-	tab->blockgroup = blockgroup;
+	gui_bg->tab = tab;
+	tab->blockgroup = gui_bg;
 	tab->extents = extents;
 	tab->nr_extents = nr_extents;
 
@@ -1134,19 +1134,19 @@ static int znr_gui_get_first_blockgroup_in_view(unsigned int *first_blockgroup)
 
 static gboolean znr_gui_refresh_local_cb(gpointer user_data)
 {
-	unsigned int first_blockgroup = 0;
+	unsigned int first_bg = 0;
 
-	if (znr_gui_get_first_blockgroup_in_view(&first_blockgroup))
+	if (znr_gui_get_first_blockgroup_in_view(&first_bg))
 		znr_gui_err("Failed to refresh local blockgroups\n", NULL);
 
-	if (znrg.visible_blockgroups_no > znr.nr_blockgroups) {
+	if (znrg.visible_blockgroups_no > znr.nr_bgs) {
 		fprintf(stderr, "Invalid visible blockgroups number: %lld\n",
 			znrg.visible_blockgroups_no);
 		return G_SOURCE_REMOVE;
 	}
 
 	znr_gui_close_extents_dialog();
-	znr_gui_report_blockgroups(first_blockgroup,
+	znr_gui_report_blockgroups(first_bg,
 				   znrg.visible_blockgroups_no);
 	znr_gui_update();
 
@@ -1194,10 +1194,10 @@ static void znr_gui_refresh_cb(GtkWidget *widget __attribute__((unused)),
                 return;
         }
 
-        znr_gui_close_extents_dialog();
-        bg_rep->starting_blockgroup = 0;
-        bg_rep->nr_blockgroups = znr.nr_blockgroups;
-        g_idle_add(znr_gui_deferred_report_blockgroups, bg_rep);
+	znr_gui_close_extents_dialog();
+	bg_rep->starting_bg = 0;
+	bg_rep->nr_bgs = znr.nr_bgs;
+	g_idle_add(znr_gui_deferred_report_blockgroups, bg_rep);
 }
 
 static void
@@ -1215,7 +1215,7 @@ znr_gui_show_blockgroup_cb(GtkWidget *button __attribute__((unused)),
 	errno = 0;
 	bg_no = strtol(text, &endptr, 10);
 	if (errno == ERANGE || endptr == text || *endptr != '\0' ||
-	    bg_no < 0 || (unsigned long)bg_no >= znr.nr_blockgroups) {
+	    bg_no < 0 || (unsigned long)bg_no >= znr.nr_bgs) {
 		znr_gui_err("Invalid blockgroup number",
 			    "Blockgroup: %s", text);
 		gtk_editable_set_text(GTK_EDITABLE(znrg.show_blockgroup_entry),
@@ -1280,9 +1280,9 @@ static void znr_gui_search_file_cb(GtkWidget *button, gpointer user_data)
                 return;
         }
 
-        bg_rep->starting_blockgroup = 0;
-        bg_rep->nr_blockgroups = znr.nr_blockgroups;
-        g_idle_add(znr_gui_deferred_report_blockgroups, bg_rep);
+	bg_rep->starting_bg = 0;
+	bg_rep->nr_bgs = znr.nr_bgs;
+	g_idle_add(znr_gui_deferred_report_blockgroups, bg_rep);
 
 	/* Set the extents information text. */
 	text_buffer = gtk_text_buffer_new(NULL);
@@ -1324,7 +1324,7 @@ static void znr_gui_grid_setup_cb(GtkListItemFactory *factory,
 static void znr_gui_grid_bind_cb(GtkListItemFactory *factory,
 				 GtkListItem *list_item, gpointer user_data)
 {
-	struct znr_gui_blockgroup *blockgroup = NULL;
+	struct znr_gui_blockgroup *gui_bg = NULL;
 	znr_blockgroup_item *bg_item;
 	GtkWidget *da;
 	GtkEventController *ctrl;
@@ -1333,13 +1333,13 @@ static void znr_gui_grid_bind_cb(GtkListItemFactory *factory,
 	bg_item = ZNR_BLOCKGROUP_ITEM(gtk_list_item_get_item(list_item));
 	da = gtk_list_item_get_child(list_item);
 
-	blockgroup = g_object_get_data(G_OBJECT(da), "blockgroup_data");
-	if (!blockgroup) {
+	gui_bg = g_object_get_data(G_OBJECT(da), "blockgroup_data");
+	if (!gui_bg) {
 		/* First time binding */
-		blockgroup = g_new0(struct znr_gui_blockgroup, 1);
-		blockgroup->da = da;
+		gui_bg = g_new0(struct znr_gui_blockgroup, 1);
+		gui_bg->da = da;
 		g_object_set_data_full(G_OBJECT(da), "blockgroup_data",
-				       blockgroup, g_free);
+				       gui_bg, g_free);
 
 		/* Setup event handlers */
 		ctrl = gtk_event_controller_motion_new();
@@ -1348,10 +1348,10 @@ static void znr_gui_grid_bind_cb(GtkListItemFactory *factory,
 
 		g_signal_connect(ctrl, "enter",
 				 G_CALLBACK(znr_gui_blockgroup_enter_cb),
-				 blockgroup);
+				 gui_bg);
 		g_signal_connect(ctrl, "leave",
 				 G_CALLBACK(znr_gui_blockgroup_leave_cb),
-				 blockgroup);
+				 gui_bg);
 
 		gesture = gtk_gesture_click_new();
 		gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture),
@@ -1359,13 +1359,13 @@ static void znr_gui_grid_bind_cb(GtkListItemFactory *factory,
 		gtk_widget_add_controller(da, GTK_EVENT_CONTROLLER(gesture));
 		g_signal_connect(gesture, "pressed",
 				 G_CALLBACK(znr_gui_blockgroup_click_cb),
-				 blockgroup);
+				 gui_bg);
 	}
 
 	/* Update blockgroup data for current item */
-	blockgroup->bg_no = bg_item->bg_no;
-	blockgroup->bg = bg_item->bg;
-	blockgroup->hovered = false;
+	gui_bg->bg_no = bg_item->bg_no;
+	gui_bg->bg = bg_item->bg;
+	gui_bg->hovered = false;
 
 	/* Track drawing area for updates */
 	if (znrg.drawing_areas) {
@@ -1374,7 +1374,7 @@ static void znr_gui_grid_bind_cb(GtkListItemFactory *factory,
 	}
 	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(da),
 				       znr_gui_blockgroup_draw_cb,
-				       blockgroup,
+				       gui_bg,
 				       NULL);
 }
 
@@ -1414,8 +1414,8 @@ static GtkWidget *znr_gui_create_grid(void)
 
 	/* Create a blockgroup g_list */
 	znrg.blockgroup_list = g_list_store_new(ZNR_TYPE_BLOCKGROUP_ITEM);
-	for (i = 0; i < znr.nr_blockgroups; ++i) {
-		bg_item = znr_blockgroup_item_new(i, &znr.blockgroups[i]);
+	for (i = 0; i < znr.nr_bgs; ++i) {
+		bg_item = znr_blockgroup_item_new(i, &znr.bgs[i]);
 		g_list_store_append(znrg.blockgroup_list, bg_item);
 		g_object_unref(bg_item);
 	}
@@ -1453,17 +1453,17 @@ static GtkWidget *znr_gui_create_grid(void)
 static void window_size_changed_cb(GtkWidget *widget)
 {
 	unsigned int w = gtk_widget_get_width(widget);
-	int blockgroup_da_w = 0;
+	int bg_da_w = 0;
 	unsigned int max_cols;
 
-	znr_gui_blockgroup_da_size(&blockgroup_da_w, NULL);
-	if (!blockgroup_da_w || !w)
+	znr_gui_blockgroup_da_size(&bg_da_w, NULL);
+	if (!bg_da_w || !w)
 		return;
 	/*
 	 * Max cols we can fit into the current window without horizontal
 	 * scrolling
 	 */
-	max_cols = w / blockgroup_da_w;
+	max_cols = w / bg_da_w;
 	max_cols = max_cols > 1 ? max_cols - 1 : max_cols;
 
 	if (max_cols != znrg.nr_col) {
@@ -1518,7 +1518,7 @@ static void znr_gui_create_app(GtkApplication *app, gpointer user_data)
 	n = snprintf(str, sizeof(str) - 1,
 		     "<b>%s</b> at <b>%s</b> (%u blockgroups) on <b>%s</b> ",
 		     znr.mnt_dir.fs->name,
-		     znr.mnt_dir.path, znr.nr_blockgroups,
+		     znr.mnt_dir.path, znr.nr_bgs,
 		     znr.dev_path);
 	if (!znr.nr_conv_zones)
 		snprintf(str + n, sizeof(str) - (n + 1),
@@ -1859,8 +1859,8 @@ int znr_gui_run(void)
 	znrg.sig_pipe[1] = -1;
 
 	/* Set blockgroup grid defaults. */
-	if (!znrg.nr_col && znr.nr_blockgroups < 100)
-		znrg.nr_col = sqrt(znr.nr_blockgroups);
+	if (!znrg.nr_col && znr.nr_bgs < 100)
+		znrg.nr_col = sqrt(znr.nr_bgs);
 	if (!znrg.nr_col)
 		znrg.nr_col = 8;
 	znrg.nr_col_min = znrg.nr_col;
