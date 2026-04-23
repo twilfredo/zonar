@@ -310,9 +310,12 @@ static int znr_xfs_get_range_extents(unsigned long long sector,
 			h->fmr_device = XFS_DEV_DATA;
 		}
 	} else {
-		fprintf(stderr, "TODO: Unsupported filesystem geometry\n");
-		ret = -ENOTSUP;
-		goto out;
+		/*
+		 * Regular XFS, only AGs, It seems we need to use a global
+		 * search here, otherwise the ioctl will return EINVAL
+		 */
+		l->fmr_device = 0;
+		h->fmr_device = UINT_MAX;
 	}
 
 	/*
@@ -384,13 +387,12 @@ static int znr_xfs_get_range_extents(unsigned long long sector,
 			    BTOBBT(p->fmr_physical) >= sector_end)
 				continue;
 
-			if (p->fmr_device == XFS_DEV_DATA) {
+			if (p->fmr_device != XFS_DEV_RT) {
 				agno = p->fmr_physical / bperag;
 				agoff = p->fmr_physical - (agno * bperag);
 				ag_rg = "AG";
 
-			} else if (p->fmr_device == XFS_DEV_RT &&
-				   fs_geo.rgcount > 0) {
+			} else {
 				start = p->fmr_physical -
 					fs_geo.rtstart * fs_geo.blocksize;
 				agno = start / bperrtg;
@@ -398,8 +400,6 @@ static int znr_xfs_get_range_extents(unsigned long long sector,
 					agno = -1;
 				agoff = start % bperrtg;
 				ag_rg = "RG";
-			} else {
-				continue;
 			}
 
 			if (nr_ext >= max_extents) {
