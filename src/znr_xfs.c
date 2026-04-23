@@ -300,7 +300,7 @@ static int znr_xfs_get_range_extents(unsigned long long sector,
 	h->fmr_offset = ULLONG_MAX;
 
 	/* Determine device type from filesystem geometry */
-	if (fs_geo.rtstart) {
+	if (fs_geo.flags & XFS_FSOP_GEOM_FLAGS_ZONED) {
 		/* This seems to work... but is it correct? */
 		if (sector > fs_geo.rtstart * (fs_geo.blocksize / BBSIZE)) {
 			l->fmr_device = XFS_DEV_RT;
@@ -540,7 +540,6 @@ static int znr_xfs_get_blockgroups(struct znr_blockgroup **bgs_out,
 
 	bbperrg = bytes_per_rtgroup(&fs_geo) / BBSIZE;
 	bbperag = (off_t)fs_geo.agblocks * (off_t)fs_geo.blocksize / BBSIZE;
-	rtstart = (off_t)fs_geo.rtstart * (off_t)fs_geo.blocksize / BBSIZE;
 	rgcount = fs_geo.rgcount;
 	agcount = fs_geo.agcount;
 
@@ -550,6 +549,11 @@ static int znr_xfs_get_blockgroups(struct znr_blockgroup **bgs_out,
 		bgs[idx].nr_sectors = bbperag;
 	}
 
+	/* Not a zoned device */
+	if (!(fs_geo.flags & XFS_FSOP_GEOM_FLAGS_ZONED))
+		goto out;
+
+	rtstart = (off_t)fs_geo.rtstart * (off_t)fs_geo.blocksize / BBSIZE;
 	for (rg = 0; rg < rgcount && idx < max_bgs; rg++, idx++) {
 		bgs[idx].sector = rtstart + (rg * bbperrg);
 		bgs[idx].nr_sectors = bbperrg;
@@ -567,6 +571,7 @@ static int znr_xfs_get_blockgroups(struct znr_blockgroup **bgs_out,
 			return ret;
 	}
 
+out:
 	*bgs_out = bgs;
 	*nr_bgs = max_bgs;
 	return 0;
@@ -579,6 +584,10 @@ static int znr_xfs_report_blockgroups(struct znr_blockgroup *bgs,
 	unsigned int max_bgs = 0;
 	unsigned int rgno;
 	int ret;
+
+	/* Not a zoned device */
+	if (!(fs_geo.flags & XFS_FSOP_GEOM_FLAGS_ZONED))
+		return nr_bgs;
 
 	ret = znr_xfs_get_nr_blockgroups(&max_bgs);
 	if (ret)
